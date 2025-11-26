@@ -15,3 +15,5 @@ extern HINSTANCE g_hinstThisDll;
 extern LONG g_cRefThisDll;
 void DllAddRef();
 void DllRelease();
+
+#define HINST_THISDLL g_hinstThisDll

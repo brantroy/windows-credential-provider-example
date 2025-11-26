@@ -109,8 +109,8 @@ CQRCodeLoginCredential::~CQRCodeLoginCredential()
     if (_rgFieldStrings[QRFI_PASSWORD])
     {
         // CoTaskMemFree (below) deals with NULL, but StringCchLength does not.
-        size_t lenPassword = lstrlen(_rgFieldStrings[QRFI_PASSWORD]);
-        SecureZeroMemory(_rgFieldStrings[QRFI_PASSWORD], lenPassword * sizeof(*_rgFieldStrings[QRFI_PASSWORD]));
+        size_t lenPassword = wcslen(_rgFieldStrings[QRFI_PASSWORD]);
+        SecureZeroMemory(_rgFieldStrings[QRFI_PASSWORD], lenPassword * sizeof(wchar_t));
     }
     for (int i = 0; i < ARRAYSIZE(_rgFieldStrings); i++)
     {
@@ -213,8 +213,8 @@ HRESULT CQRCodeLoginCredential::SetDeselected()
     HRESULT hr = S_OK;
     if (_rgFieldStrings[QRFI_PASSWORD])
     {
-        size_t lenPassword = lstrlen(_rgFieldStrings[QRFI_PASSWORD]);
-        SecureZeroMemory(_rgFieldStrings[QRFI_PASSWORD], lenPassword * sizeof(*_rgFieldStrings[QRFI_PASSWORD]));
+        size_t lenPassword = wcslen(_rgFieldStrings[QRFI_PASSWORD]);
+        SecureZeroMemory(_rgFieldStrings[QRFI_PASSWORD], lenPassword * sizeof(wchar_t));
     
         CoTaskMemFree(_rgFieldStrings[QRFI_PASSWORD]);
         hr = SHStrDupW(L"", &_rgFieldStrings[QRFI_PASSWORD]);

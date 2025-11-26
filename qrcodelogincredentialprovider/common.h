@@ -11,6 +11,7 @@
 // and which fields show in which states of LogonUI.
 
 #pragma once
+#include <credentialprovider.h>
 #include <helpers.h>
 
 // The indexes of each of the fields in our QR code credential provider's tiles.
@@ -18,10 +19,11 @@ enum QR_CODE_FIELD_ID
 {
     QRFI_TILEIMAGE       = 0,      // User tile image
     QRFI_USERNAME        = 1,      // Username field (may be hidden in QR code flow)
-    QRFI_QR_CODE_LABEL   = 2,      // Label for QR code
-    QRFI_QR_CODE_IMAGE   = 3,      // QR code image
-    QRFI_SUBMIT_BUTTON   = 4,      // Submit button
-    QRFI_NUM_FIELDS      = 5,      // Note: if new fields are added, keep NUM_FIELDS last.  This is used as a count of the number of fields
+    QRFI_PASSWORD        = 2,      // Password field (may be hidden in QR code flow)
+    QRFI_QR_CODE_LABEL   = 3,      // Label for QR code
+    QRFI_QR_CODE_IMAGE   = 4,      // QR code image
+    QRFI_SUBMIT_BUTTON   = 5,      // Submit button
+    QRFI_NUM_FIELDS      = 6,      // Note: if new fields are added, keep NUM_FIELDS last.  This is used as a count of the number of fields
 };
 
 // The first value indicates when the tile is displayed (selected, not selected)
@@ -43,6 +45,7 @@ static const FIELD_STATE_PAIR s_rgQRCodeFieldStatePairs[] =
 {
     { CPFS_DISPLAY_IN_BOTH, CPFIS_NONE },                   // QRFI_TILEIMAGE
     { CPFS_HIDDEN, CPFIS_NONE },                            // QRFI_USERNAME (hidden for QR code login)
+    { CPFS_HIDDEN, CPFIS_NONE },                            // QRFI_PASSWORD (hidden for QR code login)
     { CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_NONE },          // QRFI_QR_CODE_LABEL
     { CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_NONE },          // QRFI_QR_CODE_IMAGE
     { CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_NONE    },       // QRFI_SUBMIT_BUTTON   
@@ -56,6 +59,7 @@ static const CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR s_rgQRCodeCredProvFieldDescrip
 {
     { QRFI_TILEIMAGE, CPFT_TILE_IMAGE, L"User Image" },
     { QRFI_USERNAME, CPFT_LARGE_TEXT, L"Username" },
+    { QRFI_PASSWORD, CPFT_PASSWORD_TEXT, L"Password" },
     { QRFI_QR_CODE_LABEL, CPFT_SMALL_TEXT, L"QR Code Label" },
     { QRFI_QR_CODE_IMAGE, CPFT_TILE_IMAGE, L"QR Code Image" },
     { QRFI_SUBMIT_BUTTON, CPFT_SUBMIT_BUTTON, L"Submit" },
