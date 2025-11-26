@@ -1,75 +1,29 @@
 ```
-# Compiled and build artifacts
-*.obj
-*.exe
-*.dll
-*.lib
-*.pdb
-*.exp
-*.ilk
-*.iobj
-*.ipdb
-*.tlog
+# Visual Studio/Visual Studio Code
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.vcxproj.filters
+*.vcproj.*
+*.vcxproj.*
+.vs/
+.vscode/
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+build/
+bld/
+[Bb]in/
+[Oo]bj/
+
+# Other common ignores
 *.log
 *.tmp
-
-# Build directories
-Debug/
-Release/
-x64/
-Win32/
-build/
-dist/
-
-# Dependencies
-node_modules/
-.venv/
-venv/
-__pycache__/
-*.egg-info/
-
-# Editors
-.vscode/
-.idea/
 *.swp
-*.swo
-
-# Environment
-.env
-.env.local
-*.env.*
-
-# OS generated files
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# Coverage reports
-coverage/
-htmlcov/
-*.coverage
-
-# Compression files
-*.zip
-*.gz
-*.tar
-*.tgz
-*.bz2
-*.xz
-*.7z
-*.rar
-*.zst
-*.lz4
-*.lzh
-*.cab
-*.arj
-*.rpm
-*.deb
-*.Z
-*.lz
-*.lzo
-*.tar.gz
-*.tar.bz2
-*.tar.xz
-*.tar.zst
 ```
