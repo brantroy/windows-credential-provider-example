@@ -113,5 +113,14 @@ class CSampleCredential : public ICredentialProviderCredential
                                                                                         // the field held in 
                                                                                         // _rgCredProvFieldDescriptors.
     ICredentialProviderCredentialEvents* _pCredProvCredentialEvents;                  
-
+    
+    // QR Code related members
+    HBITMAP                               _hQRCodeBitmap;                               // QR Code image bitmap
+    void                                  _GenerateQRCodeBitmap(PCWSTR pszURL);
+    void                                  _CleanupQRCodeBitmap();
+    
+    // HTTP request related members
+    HRESULT                               _GetQRCodeURL(PWSTR* ppwszURL);
+    HRESULT                               _PollLoginStatus();
+    
 };

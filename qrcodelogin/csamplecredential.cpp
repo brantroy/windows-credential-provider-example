@@ -14,14 +14,25 @@
 #endif
 #include <unknwn.h>
 #include <wincred.h>
+#include <windows.h>
+#include <gdiplus.h>
+#include <wininet.h>
+#include <strsafe.h>
+#include <thread>
+#include <chrono>
 #include "CSampleCredential.h"
 #include "guid.h"
+
+using namespace Gdiplus;
+#pragma comment(lib, "gdiplus.lib")
+#pragma comment(lib, "wininet.lib")
 
 // CSampleCredential ////////////////////////////////////////////////////////
 
 CSampleCredential::CSampleCredential():
     _cRef(1),
-    _pCredProvCredentialEvents(NULL)
+    _pCredProvCredentialEvents(NULL),
+    _hQRCodeBitmap(NULL)
 {
     DllAddRef();
 
@@ -43,6 +54,7 @@ CSampleCredential::~CSampleCredential()
         CoTaskMemFree(_rgCredProvFieldDescriptors[i].pszLabel);
     }
 
+    _CleanupQRCodeBitmap();
     DllRelease();
 }
 
@@ -209,6 +221,30 @@ HRESULT CSampleCredential::GetBitmapValue(
         else
         {
             hr = HRESULT_FROM_WIN32(GetLastError());
+        }
+    }
+    else if ((SFI_QRCODEIMAGE == dwFieldID) && phbmp)
+    {
+        // Generate QR code if not already generated
+        if (!_hQRCodeBitmap)
+        {
+            PWSTR pszURL = NULL;
+            HRESULT hrURL = _GetQRCodeURL(&pszURL);
+            if (SUCCEEDED(hrURL) && pszURL)
+            {
+                _GenerateQRCodeBitmap(pszURL);
+                CoTaskMemFree(pszURL);
+            }
+        }
+
+        if (_hQRCodeBitmap)
+        {
+            *phbmp = (HBITMAP)CopyImage(_hQRCodeBitmap, IMAGE_BITMAP, 0, 0, LR_COPYRETURNORG);
+            hr = S_OK;
+        }
+        else
+        {
+            hr = E_FAIL;
         }
     }
     else
@@ -530,5 +566,112 @@ HRESULT CSampleCredential::ReportResult(
 
     // Since NULL is a valid value for *ppwzOptionalStatusText and *pcpsiOptionalStatusIcon
     // this function can't fail.
+    return S_OK;
+}
+
+// Generate QR code bitmap from URL
+void CSampleCredential::_GenerateQRCodeBitmap(PCWSTR pszURL)
+{
+    // Clean up existing bitmap if any
+    _CleanupQRCodeBitmap();
+
+    // Create a simple QR code-like pattern for demonstration
+    // In a real implementation, you would integrate with a QR code library
+    HDC hdcScreen = GetDC(NULL);
+    if (hdcScreen)
+    {
+        // Create a compatible DC and bitmap
+        HDC hdcMem = CreateCompatibleDC(hdcScreen);
+        if (hdcMem)
+        {
+            // Create a 200x200 pixel bitmap for the QR code
+            BITMAPINFO bmi = {0};
+            bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+            bmi.bmiHeader.biWidth = 200;
+            bmi.bmiHeader.biHeight = -200; // Top-down DIB
+            bmi.bmiHeader.biPlanes = 1;
+            bmi.bmiHeader.biBitCount = 24;
+            bmi.bmiHeader.biCompression = BI_RGB;
+            
+            void* pBits = NULL;
+            HBITMAP hbm = CreateDIBSection(hdcMem, &bmi, DIB_RGB_COLORS, &pBits, NULL, 0);
+            if (hbm)
+            {
+                HGDIOBJ hbmOld = SelectObject(hdcMem, hbm);
+                
+                // Fill with white background
+                RECT rc = {0, 0, 200, 200};
+                HBRUSH hbrWhite = CreateSolidBrush(RGB(255, 255, 255));
+                FillRect(hdcMem, &rc, hbrWhite);
+                DeleteObject(hbrWhite);
+                
+                // Draw a simple QR code pattern for demonstration
+                // In a real implementation, you would generate an actual QR code from the URL
+                HPEN hpenBlack = CreatePen(PS_SOLID, 1, RGB(0, 0, 0));
+                HPEN hpenOld = (HPEN)SelectObject(hdcMem, hpenBlack);
+                
+                // Draw a simple pattern to represent a QR code
+                // Draw border squares
+                Rectangle(hdcMem, 10, 10, 50, 50);  // Top-left
+                Rectangle(hdcMem, 150, 10, 190, 50); // Top-right
+                Rectangle(hdcMem, 10, 150, 50, 190); // Bottom-left
+                
+                // Draw some pattern inside to make it look like a QR code
+                for (int i = 0; i < 10; i++) {
+                    for (int j = 0; j < 10; j++) {
+                        if ((i + j) % 2 == 0) { // Simple alternating pattern
+                            RECT rect = {60 + i * 12, 60 + j * 12, 70 + i * 12, 70 + j * 12};
+                            HBRUSH hbrBlack = CreateSolidBrush(RGB(0, 0, 0));
+                            FillRect(hdcMem, &rect, hbrBlack);
+                            DeleteObject(hbrBlack);
+                        }
+                    }
+                }
+                
+                SelectObject(hdcMem, hpenOld);
+                DeleteObject(hpenBlack);
+                
+                // Store the bitmap
+                _hQRCodeBitmap = (HBITMAP)CopyImage(hbm, IMAGE_BITMAP, 0, 0, LR_COPYRETURNORG);
+                
+                SelectObject(hdcMem, hbmOld);
+            }
+            DeleteDC(hdcMem);
+        }
+        ReleaseDC(NULL, hdcScreen);
+    }
+}
+
+// Cleanup QR code bitmap
+void CSampleCredential::_CleanupQRCodeBitmap()
+{
+    if (_hQRCodeBitmap)
+    {
+        DeleteObject(_hQRCodeBitmap);
+        _hQRCodeBitmap = NULL;
+    }
+}
+
+// Get QR code URL from server
+HRESULT CSampleCredential::_GetQRCodeURL(PWSTR* ppwszURL)
+{
+    // For demonstration, return a static URL
+    // In a real implementation, this would call an actual API to get a QR code URL
+    PCWSTR staticURL = L"https://example.com/qrcode/12345";
+    size_t cch = wcslen(staticURL) + 1;
+    *ppwszURL = (PWSTR)CoTaskMemAlloc(cch * sizeof(WCHAR));
+    if (*ppwszURL)
+    {
+        wcscpy_s(*ppwszURL, cch, staticURL);
+        return S_OK;
+    }
+    return E_OUTOFMEMORY;
+}
+
+// Poll login status from server
+HRESULT CSampleCredential::_PollLoginStatus()
+{
+    // For demonstration, return S_OK to simulate successful login
+    // In a real implementation, this would poll an API to check login status
     return S_OK;
 }
