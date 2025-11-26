@@ -572,6 +572,7 @@ HRESULT CSampleCredential::ReportResult(
 // Generate QR code bitmap from URL
 void CSampleCredential::_GenerateQRCodeBitmap(PCWSTR pszURL)
 {
+    UNREFERENCED_PARAMETER(pszURL); // todo
     // Clean up existing bitmap if any
     _CleanupQRCodeBitmap();
 
