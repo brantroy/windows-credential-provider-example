@@ -46,7 +46,6 @@ CSampleCredential::~CSampleCredential()
     for (int i = 0; i < ARRAYSIZE(_rgFieldStrings); i++)
     {
         CoTaskMemFree(_rgFieldStrings[i]);
-        CoTaskMemFree(_rgCredProvFieldDescriptors[i].pszLabel);
     }
     
     // Clean up QR code bitmap
