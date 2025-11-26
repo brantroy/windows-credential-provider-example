@@ -26,6 +26,7 @@
 #include "CSampleProvider.h"
 #include "CSampleCredential.h"
 #include "guid.h"
+#include "helpers.h"
 
 // CSampleProvider ////////////////////////////////////////////////////////
 

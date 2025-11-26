@@ -21,7 +21,9 @@
   <PropertyGroup Label="Globals">
     <VCProjectVersion>18.0</VCProjectVersion>
     <ProjectGuid>{2DF895C3-D1B4-4632-8F76-F06670A0D311}</ProjectGuid>
-    <RootNamespace>SampleCredentialProvider</RootNamespace>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>QRCodeLoginProvider</RootNamespace>
+    <ProjectName>QRCodeLoginProvider</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
@@ -198,7 +200,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="Register.reg" />
-    <None Include="SampleCredentialProvider.def" />
+    <None Include="QRCodeLoginProvider.def" />
     <None Include="Unregister.reg" />
   </ItemGroup>
   <ItemGroup>

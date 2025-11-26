@@ -15,6 +15,7 @@
 #include <unknwn.h>
 #include "CSampleCredential.h"
 #include "guid.h"
+#include "helpers.h"
 
 // CSampleCredential ////////////////////////////////////////////////////////
 
