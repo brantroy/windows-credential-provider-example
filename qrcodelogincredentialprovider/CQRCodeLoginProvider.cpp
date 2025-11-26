@@ -17,7 +17,7 @@
 class CQRCodeLoginProvider : public ICredentialProvider
 {
 public:
-    CQRCodeLoginProvider(): _cRef(1), _pCredential(NULL)
+    CQRCodeLoginProvider(): _cRef(1), _pCredential(NULL), _cpus(CPUS_INVALID)
     {
         DllAddRef();
     }
@@ -46,6 +46,16 @@ public:
             {0},
         };
         return QISearch(this, qit, riid, ppv);
+    }
+    
+    // Virtual destructor to prevent undefined behavior
+    virtual ~CQRCodeLoginProvider()
+    {
+        if (_pCredential)
+        {
+            _pCredential->Release();
+        }
+        DllRelease();
     }
 
     IFACEMETHODIMP SetUsageScenario(__in CREDENTIAL_PROVIDER_USAGE_SCENARIO cpus, __in_opt HWND hwnd)
@@ -133,15 +143,6 @@ public:
     }
 
 private:
-    ~CQRCodeLoginProvider()
-    {
-        if (_pCredential)
-        {
-            _pCredential->Release();
-        }
-        DllRelease();
-    }
-
     LONG                                    _cRef;
     CREDENTIAL_PROVIDER_USAGE_SCENARIO      _cpus;
     CQRCodeLoginCredential*                 _pCredential;
@@ -160,17 +161,112 @@ HBITMAP GenerateQRCodeBitmap(PCWSTR pwzURL)
 // These are standard implementations that can be reused from the sample code.
 
 // Provider implementation
-extern "C" HRESULT CALLBACK DllGetClassObject(__in REFCLSID rclsid, __in REFIID riid, __deref_out void** ppv)
+
+class CQRCodeLoginProviderClassFactory : public IClassFactory
+{
+public:
+    CQRCodeLoginProviderClassFactory() : _cRef(1) 
+    {
+    }
+
+    // IUnknown
+    IFACEMETHODIMP QueryInterface(__in REFIID riid, __deref_out void **ppv)
+    {
+        static const QITAB qit[] = 
+        {
+            QITABENT(CQRCodeLoginProviderClassFactory, IClassFactory),
+            { 0 },
+        };
+        return QISearch(this, qit, riid, ppv);
+    }
+
+    IFACEMETHODIMP_(ULONG) AddRef()
+    {
+        return InterlockedIncrement(&_cRef);
+    }
+
+    IFACEMETHODIMP_(ULONG) Release()
+    {
+        LONG cRef = InterlockedDecrement(&_cRef);
+        if (!cRef)
+            delete this;
+        return cRef;
+    }
+
+    // IClassFactory
+    IFACEMETHODIMP CreateInstance(__in IUnknown* pUnkOuter, __in REFIID riid, __deref_out void **ppv)
+    {
+        HRESULT hr;
+        if (!pUnkOuter)
+        {
+            CQRCodeLoginProvider* pProvider = new CQRCodeLoginProvider();
+            if (pProvider)
+            {
+                hr = pProvider->QueryInterface(riid, ppv);
+                pProvider->Release();
+            }
+            else
+            {
+                hr = E_OUTOFMEMORY;
+            }
+        }
+        else
+        {
+            *ppv = NULL;
+            hr = CLASS_E_NOAGGREGATION;
+        }
+        return hr;
+    }
+
+    IFACEMETHODIMP LockServer(__in BOOL bLock)
+    {
+        if (bLock)
+        {
+            DllAddRef();
+        }
+        else
+        {
+            DllRelease();
+        }
+        return S_OK;
+    }
+
+private:
+    ~CQRCodeLoginProviderClassFactory()
+    {
+    }
+    long _cRef;
+};
+
+HRESULT CQRCodeLoginProviderClassFactory_CreateInstance(__in REFCLSID rclsid, __in REFIID riid, __deref_out void **ppv)
 {
     *ppv = NULL;
-    HRESULT hr = E_OUTOFMEMORY;
-    CQRCodeLoginProvider* pProvider = new CQRCodeLoginProvider();  // construct the CP
-    if (pProvider)  // successfully created provider object
+
+    HRESULT hr;
+
+    if (CLSID_CQRCodeLogin == rclsid)
     {
-        hr = pProvider->QueryInterface(riid, ppv);  // look for the requested interface
-        pProvider->Release();
+        CQRCodeLoginProviderClassFactory* pcf = new CQRCodeLoginProviderClassFactory();
+        if (pcf)
+        {
+            hr = pcf->QueryInterface(riid, ppv);
+            pcf->Release();
+        }
+        else
+        {
+            hr = E_OUTOFMEMORY;
+        }
+    }
+    else
+    {
+        hr = CLASS_E_CLASSNOTAVAILABLE;
     }
     return hr;
+}
+
+extern "C" HRESULT CALLBACK DllGetClassObject(__in REFCLSID rclsid, __in REFIID riid, __deref_out void** ppv)
+{
+    return CQRCodeLoginProviderClassFactory_CreateInstance(rclsid, riid, ppv);
 }
 
 extern "C" HRESULT CALLBACK DllCanUnloadNow()
