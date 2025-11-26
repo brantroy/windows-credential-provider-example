@@ -1,5 +1,4 @@
-﻿D:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Microsoft\VC\v180\Microsoft.CppBuild.targets(1143,5): warning MSB4211: 正在首次将属性“GetTargetPathDependsOn”设置为某个值，但已在“D:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\amd64\Microsoft.Common.CurrentVersion.targets (2243,5)”处使用了该属性。
-  Dll.cpp
+﻿  Dll.cpp
   helpers.cpp
   正在生成代码...
-  Helpers.vcxproj -> D:\work\projects\demo\Windows-classic-samples-main\Samples\Win7Samples\security\credentialproviders\x64\Debug\Helpers.lib
+  Helpers.vcxproj -> D:\work\projects\demo\credentialproviders\x64\Debug\Helpers.lib

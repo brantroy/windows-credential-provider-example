@@ -1,0 +1,12 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\Credential Providers\{781A7B48-79A7-4fcf-92CC-A6977171F1A8}]
+@="qrcodelogin"
+
+[HKEY_CLASSES_ROOT\CLSID\{B5F3A3C1-8D4E-4F2A-9B1C-7D8E6F5A4B3C}]
+@="qrcodelogin"
+
+[HKEY_CLASSES_ROOT\CLSID\{B5F3A3C1-8D4E-4F2A-9B1C-7D8E6F5A4B3C}\InprocServer32]
+@="qrcodelogin.dll"
+"ThreadingModel"="Apartment"
+
