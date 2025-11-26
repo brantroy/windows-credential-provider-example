@@ -1,0 +1,51 @@
+```
+# Compiled and build artifacts
+*.obj
+*.pdb
+*.dll
+*.exe
+*.lib
+*.tlog/
+*.log
+*.recipe
+*.res
+
+# Build directories
+x64/
+Debug/
+Release/
+build/
+dist/
+
+# Visual Studio files
+*.vcxproj.user
+*.sln
+*.suo
+*.user
+*.userosscache
+*.sdf
+*.opensdf
+*.vc.db
+*.vcxproj.filters
+
+# Temporary files
+*.tmp
+*.temp
+*.cache
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+```
