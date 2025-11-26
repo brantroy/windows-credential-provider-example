@@ -13,7 +13,7 @@
 
 #include <helpers.h>
 #include "common.h"
-#include "dll.h"
+#include "..\\helpers\\Dll.h"
 #include "resource.h"
 
 class CQRCodeLoginCredential : public ICredentialProviderCredential
