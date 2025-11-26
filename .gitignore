@@ -1,0 +1,45 @@
+```
+# Build artifacts
+*.obj
+*.lib
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.exp
+*.iobj
+*.ipdb
+*.tlog
+*.log
+
+# Visual Studio files
+*.vcxproj.user
+*.vcxproj.filters
+*.sln
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Visual Studio Code files
+.vscode/
+
+# Temporary files
+*.tmp
+*.temp
+*.cache
+
+# Windows files
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Build directories
+Debug/
+Release/
+x64/
+x86/
+bin/
+obj/
+```
