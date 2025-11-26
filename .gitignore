@@ -1,45 +1,75 @@
 ```
-# Build artifacts
+# Compiled and build artifacts
 *.obj
-*.lib
-*.dll
 *.exe
+*.dll
+*.lib
 *.pdb
-*.ilk
 *.exp
+*.ilk
 *.iobj
 *.ipdb
 *.tlog
 *.log
-
-# Visual Studio files
-*.vcxproj.user
-*.vcxproj.filters
-*.sln
-*.suo
-*.user
-*.userosscache
-*.sln.docstates
-
-# Visual Studio Code files
-.vscode/
-
-# Temporary files
 *.tmp
-*.temp
-*.cache
-
-# Windows files
-Thumbs.db
-desktop.ini
-$RECYCLE.BIN/
-*.lnk
 
 # Build directories
 Debug/
 Release/
 x64/
-x86/
-bin/
-obj/
+Win32/
+build/
+dist/
+
+# Dependencies
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.egg-info/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Coverage reports
+coverage/
+htmlcov/
+*.coverage
+
+# Compression files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
 ```
