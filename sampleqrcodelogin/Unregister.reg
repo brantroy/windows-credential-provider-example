@@ -1,0 +1,5 @@
+Windows Registry Editor Version 5.00
+
+; Unregister sampleqrcodelogin credential provider
+[-HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\Credential Providers\{8A1B2C3D-4E5F-6789-ABCD-0123456789AB}]
+[-HKEY_CLASSES_ROOT\CLSID\{8A1B2C3D-4E5F-6789-ABCD-0123456789AB}]

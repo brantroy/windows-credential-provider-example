@@ -1,0 +1,12 @@
+Windows Registry Editor Version 5.00
+
+; Register the new sampleqrcodelogin credential provider
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\Credential Providers\{8A1B2C3D-4E5F-6789-ABCD-0123456789AB}]
+@="SampleQrCodeLogin"
+
+[HKEY_CLASSES_ROOT\CLSID\{8A1B2C3D-4E5F-6789-ABCD-0123456789AB}]
+@="SampleQrCodeLogin"
+
+[HKEY_CLASSES_ROOT\CLSID\{8A1B2C3D-4E5F-6789-ABCD-0123456789AB}\InprocServer32]
+@="sampleqrcodelogin.dll"
+"ThreadingModel"="Apartment"

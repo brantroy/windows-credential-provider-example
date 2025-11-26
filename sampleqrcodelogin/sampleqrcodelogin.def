@@ -1,0 +1,6 @@
+LIBRARY "sampleqrcodelogin"
+EXPORTS
+  DllRegisterServer      PRIVATE
+  DllUnregisterServer    PRIVATE
+  DllGetClassObject
+  DllCanUnloadNow
