@@ -22,6 +22,8 @@
 #include <chrono>
 #include "CSampleCredential.h"
 #include "guid.h"
+#include "qrcodegen.h"
+#include <vector>
 
 using namespace Gdiplus;
 #pragma comment(lib, "gdiplus.lib")
@@ -572,75 +574,89 @@ HRESULT CSampleCredential::ReportResult(
 // Generate QR code bitmap from URL
 void CSampleCredential::_GenerateQRCodeBitmap(PCWSTR pszURL)
 {
-    UNREFERENCED_PARAMETER(pszURL); // todo
-    // Clean up existing bitmap if any
     _CleanupQRCodeBitmap();
 
-    // Create a simple QR code-like pattern for demonstration
-    // In a real implementation, you would integrate with a QR code library
-    HDC hdcScreen = GetDC(NULL);
-    if (hdcScreen)
-    {
-        // Create a compatible DC and bitmap
-        HDC hdcMem = CreateCompatibleDC(hdcScreen);
-        if (hdcMem)
-        {
-            // Create a 200x200 pixel bitmap for the QR code
-            BITMAPINFO bmi = {0};
-            bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-            bmi.bmiHeader.biWidth = 200;
-            bmi.bmiHeader.biHeight = -200; // Top-down DIB
-            bmi.bmiHeader.biPlanes = 1;
-            bmi.bmiHeader.biBitCount = 24;
-            bmi.bmiHeader.biCompression = BI_RGB;
-            
-            void* pBits = NULL;
-            HBITMAP hbm = CreateDIBSection(hdcMem, &bmi, DIB_RGB_COLORS, &pBits, NULL, 0);
-            if (hbm)
-            {
-                HGDIOBJ hbmOld = SelectObject(hdcMem, hbm);
-                
-                // Fill with white background
-                RECT rc = {0, 0, 200, 200};
-                HBRUSH hbrWhite = CreateSolidBrush(RGB(255, 255, 255));
-                FillRect(hdcMem, &rc, hbrWhite);
-                DeleteObject(hbrWhite);
-                
-                // Draw a simple QR code pattern for demonstration
-                // In a real implementation, you would generate an actual QR code from the URL
-                HPEN hpenBlack = CreatePen(PS_SOLID, 1, RGB(0, 0, 0));
-                HPEN hpenOld = (HPEN)SelectObject(hdcMem, hpenBlack);
-                
-                // Draw a simple pattern to represent a QR code
-                // Draw border squares
-                Rectangle(hdcMem, 10, 10, 50, 50);  // Top-left
-                Rectangle(hdcMem, 150, 10, 190, 50); // Top-right
-                Rectangle(hdcMem, 10, 150, 50, 190); // Bottom-left
-                
-                // Draw some pattern inside to make it look like a QR code
-                for (int i = 0; i < 10; i++) {
-                    for (int j = 0; j < 10; j++) {
-                        if ((i + j) % 2 == 0) { // Simple alternating pattern
-                            RECT rect = {60 + i * 12, 60 + j * 12, 70 + i * 12, 70 + j * 12};
-                            HBRUSH hbrBlack = CreateSolidBrush(RGB(0, 0, 0));
-                            FillRect(hdcMem, &rect, hbrBlack);
-                            DeleteObject(hbrBlack);
-                        }
+    if (!pszURL || wcslen(pszURL) == 0)
+        return;
+
+    // Convert wide string URL to UTF-8 (qrcodegen expects const char*)
+    int len = WideCharToMultiByte(CP_UTF8, 0, pszURL, -1, nullptr, 0, nullptr, nullptr);
+    if (len <= 0) return;
+
+    std::vector<char> utf8(len);
+    WideCharToMultiByte(CP_UTF8, 0, pszURL, -1, utf8.data(), len, nullptr, nullptr);
+
+    // Encode QR Code
+    uint8_t qrcode[qrcodegen_BUFFER_LEN_MAX];
+    uint8_t tempBuffer[qrcodegen_BUFFER_LEN_MAX];
+    bool ok = qrcodegen_encodeText(utf8.data(), tempBuffer, qrcode,
+                                   qrcodegen_Ecc_MEDIUM,
+                                   qrcodegen_VERSION_MIN, qrcodegen_VERSION_MAX,
+                                   qrcodegen_Mask_AUTO, true);
+    if (!ok)
+        return;
+
+    int size = qrcodegen_getSize(qrcode);
+    if (size <= 0)
+        return;
+
+    // Create GDI bitmap (we'll scale each module to e.g., 4x4 pixels)
+    const int scale = 6;   // each QR "pixel" becomes 6x6 screen pixels
+    const int width = size * scale;
+    const int height = size * scale;
+
+    HDC hdcScreen = GetDC(nullptr);
+    if (!hdcScreen) return;
+
+    HDC hdcMem = CreateCompatibleDC(hdcScreen);
+    if (!hdcMem) {
+        ReleaseDC(nullptr, hdcScreen);
+        return;
+    }
+
+    BITMAPINFO bmi = {0};
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = width;
+    bmi.bmiHeader.biHeight = -height;  // top-down DIB
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;     // 32-bit for easier pixel access
+    bmi.bmiHeader.biCompression = BI_RGB;
+
+    void* pBits = nullptr;
+    HBITMAP hbm = CreateDIBSection(hdcMem, &bmi, DIB_RGB_COLORS, &pBits, nullptr, 0);
+    if (!hbm) {
+        DeleteDC(hdcMem);
+        ReleaseDC(nullptr, hdcScreen);
+        return;
+    }
+
+    // Fill buffer: white background, black modules
+    uint32_t* pixels = static_cast<uint32_t*>(pBits);
+    const uint32_t white = 0xFFFFFFFF; // ARGB (but GDI ignores alpha)
+    const uint32_t black = 0xFF000000;
+
+    for (int y = 0; y < size; y++) {
+        for (int x = 0; x < size; x++) {
+            bool isBlack = qrcodegen_getModule(qrcode, x, y);
+            uint32_t color = isBlack ? black : white;
+            for (int dy = 0; dy < scale; dy++) {
+                for (int dx = 0; dx < scale; dx++) {
+                    int screenX = x * scale + dx;
+                    int screenY = y * scale + dy;
+                    if (screenX < width && screenY < height) {
+                        pixels[screenY * width + screenX] = color;
                     }
                 }
-                
-                SelectObject(hdcMem, hpenOld);
-                DeleteObject(hpenBlack);
-                
-                // Store the bitmap
-                _hQRCodeBitmap = (HBITMAP)CopyImage(hbm, IMAGE_BITMAP, 0, 0, LR_COPYRETURNORG);
-                
-                SelectObject(hdcMem, hbmOld);
             }
-            DeleteDC(hdcMem);
         }
-        ReleaseDC(NULL, hdcScreen);
     }
+
+    // Save bitmap handle
+    _hQRCodeBitmap = (HBITMAP)CopyImage(hbm, IMAGE_BITMAP, 0, 0, LR_COPYRETURNORG);
+
+    DeleteObject(hbm);
+    DeleteDC(hdcMem);
+    ReleaseDC(nullptr, hdcScreen);
 }
 
 // Cleanup QR code bitmap

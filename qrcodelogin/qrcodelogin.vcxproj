@@ -187,6 +187,7 @@
     <ClCompile Include="CSampleCredential.cpp" />
     <ClCompile Include="CSampleProvider.cpp" />
     <ClCompile Include="guid.cpp" />
+    <ClCompile Include="qrcodegen.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="common.h" />
