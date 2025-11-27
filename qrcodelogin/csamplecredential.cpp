@@ -24,6 +24,7 @@
 #include "guid.h"
 #include "qrcodegen.h"
 #include <vector>
+#include "LocalizedStrings.h"
 
 using namespace Gdiplus;
 #pragma comment(lib, "gdiplus.lib")
@@ -85,7 +86,7 @@ HRESULT CSampleCredential::Initialize(
     // Initialize the String values of all the fields.
     if (SUCCEEDED(hr))
     {
-        hr = SHStrDupW(L"东方希望统一认证", &_rgFieldStrings[SFI_USERNAME]);
+        hr = SHStrDupW(IDS_USERNAME_LABEL, &_rgFieldStrings[SFI_USERNAME]);
     }
     if (SUCCEEDED(hr))
     {
@@ -93,7 +94,7 @@ HRESULT CSampleCredential::Initialize(
     }
     if (SUCCEEDED(hr))
     {
-        hr = SHStrDupW(L"Submit", &_rgFieldStrings[SFI_SUBMIT_BUTTON]);
+        hr = SHStrDupW(IDS_SUBMIT_BUTTON, &_rgFieldStrings[SFI_SUBMIT_BUTTON]);
     }
 
     return S_OK;
