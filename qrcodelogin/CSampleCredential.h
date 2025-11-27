@@ -123,4 +123,10 @@ class CSampleCredential : public ICredentialProviderCredential
     HRESULT                               _GetQRCodeURL(PWSTR* ppwszURL);
     HRESULT                               _PollLoginStatus();
     
+    // QR Code refresh and timeout management
+    LARGE_INTEGER                         _qrCodeGenerationTime;                        // Time when QR code was generated
+    LARGE_INTEGER                         _lastPollTime;                                // Time of last poll
+    LARGE_INTEGER                         _frequency;                                   // Performance counter frequency
+    bool                                  _isQRCodeExpired;                             // Flag to track if QR code is expired
+    std::wstring                          _currentQRCodeURL;                            // Store current QR code URL
 };

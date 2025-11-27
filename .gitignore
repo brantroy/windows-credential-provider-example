@@ -1,50 +1,15 @@
 ```
-# Compiled and build artifacts
-*.obj
-*.exe
-*.dll
-*.lib
-*.pdb
-*.exp
-*.ilk
-*.tlog
-*.log
-*.tmp
-
-# Dependencies
-node_modules/
-venv/
-.venv/
-__pycache__/
-*.egg-info/
-dist/
+# Build artifacts
 build/
-target/
-.gradle/
+CMakeCache.txt
+CMakeFiles/
+Makefile
+cmake_install.cmake
+*.o
+*.bin
+*.cpp.o.d
 
-# Editors
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Environment
-.env
-.env.local
-*.env.*
-
-# System
-.DS_Store
-Thumbs.db
-
-# Coverage
-coverage/
-htmlcov/
-.coverage
-
-# Logs
-*.log
-
-# Temp files
-*.tmp
+# Test executables
+test_qr_login
+test_qr_login_mock
 ```

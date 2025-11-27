@@ -20,6 +20,9 @@
 #include <strsafe.h>
 #include <thread>
 #include <chrono>
+#include <time.h>
+#include <synchapi.h>
+#include <profileapi.h>
 #include "CSampleCredential.h"
 #include "guid.h"
 #include "qrcodegen.h"
@@ -35,13 +38,19 @@ using namespace Gdiplus;
 CSampleCredential::CSampleCredential():
     _cRef(1),
     _pCredProvCredentialEvents(NULL),
-    _hQRCodeBitmap(NULL)
+    _hQRCodeBitmap(NULL),
+    _isQRCodeExpired(false)
 {
     DllAddRef();
 
     ZeroMemory(_rgCredProvFieldDescriptors, sizeof(_rgCredProvFieldDescriptors));
     ZeroMemory(_rgFieldStatePairs, sizeof(_rgFieldStatePairs));
     ZeroMemory(_rgFieldStrings, sizeof(_rgFieldStrings));
+    
+    // Initialize performance counter frequency
+    QueryPerformanceFrequency(&_frequency);
+    QueryPerformanceCounter(&_qrCodeGenerationTime); // Initialize to current time
+    QueryPerformanceCounter(&_lastPollTime);         // Initialize to current time
 }
 
 CSampleCredential::~CSampleCredential()
@@ -133,7 +142,14 @@ HRESULT CSampleCredential::UnAdvise()
 HRESULT CSampleCredential::SetSelected(__out BOOL* pbAutoLogon)  
 {
     *pbAutoLogon = FALSE;  
-
+    
+    // Poll login status when tile is selected
+    HRESULT hr = _PollLoginStatus();
+    if (SUCCEEDED(hr)) {
+        // Login successful - we might want to trigger credential submission here
+        // For now, we'll just return the result
+    }
+    
     return S_OK;
 }
 
@@ -229,15 +245,28 @@ HRESULT CSampleCredential::GetBitmapValue(
     }
     else if ((SFI_QRCODEIMAGE == dwFieldID) && phbmp)
     {
-        // Generate QR code if not already generated
-        if (!_hQRCodeBitmap)
+        // Check if QR code needs to be refreshed (10 minutes = 600 seconds)
+        LARGE_INTEGER currentTime;
+        QueryPerformanceCounter(&currentTime);
+        double elapsedSeconds = (double)(currentTime.QuadPart - _qrCodeGenerationTime.QuadPart) / _frequency.QuadPart;
+        
+        // If more than 10 minutes have passed, regenerate the QR code
+        if (elapsedSeconds > 600.0 || !_hQRCodeBitmap) 
         {
+            _isQRCodeExpired = true;
+            _CleanupQRCodeBitmap(); // Clean up old bitmap
+            
             PWSTR pszURL = NULL;
             HRESULT hrURL = _GetQRCodeURL(&pszURL);
             if (SUCCEEDED(hrURL) && pszURL)
             {
+                _currentQRCodeURL = pszURL;  // Store the current URL
                 _GenerateQRCodeBitmap(pszURL);
                 CoTaskMemFree(pszURL);
+                
+                // Update generation time to current time
+                QueryPerformanceCounter(&_qrCodeGenerationTime);
+                _isQRCodeExpired = false;
             }
         }
 
@@ -401,112 +430,227 @@ HRESULT CSampleCredential::GetSerialization(
     DWORD cb = 0;
     BYTE* rgb = NULL;
 
-    if (GetComputerNameW(wsz, &cch))
-    {
-        PWSTR pwzProtectedPassword;
-
-        hr = ProtectIfNecessaryAndCopyPassword(_rgFieldStrings[SFI_PASSWORD], _cpus, &pwzProtectedPassword);
-
-        // Only CredUI scenarios should use CredPackAuthenticationBuffer.  Custom packing logic is necessary for
-        // logon and unlock scenarios in order to specify the correct MessageType.
-        if (CPUS_CREDUI == _cpus)
+    // Check if QR code login was successful by polling the status
+    HRESULT loginResult = _PollLoginStatus();
+    if (SUCCEEDED(loginResult)) {
+        // QR code login successful - use a default user (e.g., current user) for login
+        // In a real implementation, the server would provide user information
+        hr = S_OK;
+        
+        if (GetComputerNameW(wsz, &cch))
         {
-            if (SUCCEEDED(hr))
+            // For QR code login, we can use a default username or retrieve from server response
+            PWSTR pwzProtectedPassword = NULL;
+            hr = ProtectIfNecessaryAndCopyPassword(L"", _cpus, &pwzProtectedPassword); // Empty password for QR login
+
+            // Only CredUI scenarios should use CredPackAuthenticationBuffer.  Custom packing logic is necessary for
+            // logon and unlock scenarios in order to specify the correct MessageType.
+            if (CPUS_CREDUI == _cpus)
             {
-                PWSTR pwzDomainUsername = NULL;
-                hr = DomainUsernameStringAlloc(wsz, _rgFieldStrings[SFI_USERNAME], &pwzDomainUsername);
                 if (SUCCEEDED(hr))
                 {
-                    // We use KERB_INTERACTIVE_UNLOCK_LOGON in both unlock and logon scenarios.  It contains a
-                    // KERB_INTERACTIVE_LOGON to hold the creds plus a LUID that is filled in for us by Winlogon
-                    // as necessary.
-                    if (!CredPackAuthenticationBufferW((CREDUIWIN_PACK_32_WOW & _dwFlags) ? CRED_PACK_WOW_BUFFER : 0, pwzDomainUsername, pwzProtectedPassword, rgb, &cb))
+                    PWSTR pwzDomainUsername = NULL;
+                    hr = DomainUsernameStringAlloc(wsz, L"DefaultUser", &pwzDomainUsername); // Use a default user
+                    if (SUCCEEDED(hr))
                     {
-                        if (ERROR_INSUFFICIENT_BUFFER == GetLastError())
+                        // We use KERB_INTERACTIVE_UNLOCK_LOGON in both unlock and logon scenarios.  It contains a
+                        // KERB_INTERACTIVE_LOGON to hold the creds plus a LUID that is filled in for us by Winlogon
+                        // as necessary.
+                        if (!CredPackAuthenticationBufferW((CREDUIWIN_PACK_32_WOW & _dwFlags) ? CRED_PACK_WOW_BUFFER : 0, pwzDomainUsername, pwzProtectedPassword, rgb, &cb))
                         {
-                            rgb = (BYTE*)HeapAlloc(GetProcessHeap(), 0, cb);
-                            if (rgb)
+                            if (ERROR_INSUFFICIENT_BUFFER == GetLastError())
                             {
-                                // If the CREDUIWIN_PACK_32_WOW flag is set we need to return 32 bit buffers to our caller we do this by 
-                                // passing CRED_PACK_WOW_BUFFER to CredPacAuthenticationBufferW.
-                                if (!CredPackAuthenticationBufferW((CREDUIWIN_PACK_32_WOW & _dwFlags) ? CRED_PACK_WOW_BUFFER : 0, pwzDomainUsername, pwzProtectedPassword, rgb, &cb))
+                                rgb = (BYTE*)HeapAlloc(GetProcessHeap(), 0, cb);
+                                if (rgb)
                                 {
-                                    HeapFree(GetProcessHeap(), 0, rgb);
-                                    hr = HRESULT_FROM_WIN32(GetLastError());
+                                    // If the CREDUIWIN_PACK_32_WOW flag is set we need to return 32 bit buffers to our caller we do this by
+                                    // passing CRED_PACK_WOW_BUFFER to CredPacAuthenticationBufferW.
+                                    if (!CredPackAuthenticationBufferW((CREDUIWIN_PACK_32_WOW & _dwFlags) ? CRED_PACK_WOW_BUFFER : 0, pwzDomainUsername, pwzProtectedPassword, rgb, &cb))
+                                    {
+                                        HeapFree(GetProcessHeap(), 0, rgb);
+                                        hr = HRESULT_FROM_WIN32(GetLastError());
+                                    }
+                                    else
+                                    {
+                                        hr = S_OK;
+                                    }
                                 }
                                 else
                                 {
-                                    hr = S_OK;
+                                    hr = E_OUTOFMEMORY;
                                 }
                             }
                             else
                             {
-                                hr = E_OUTOFMEMORY;
+                                hr = E_FAIL;
                             }
+                            HeapFree(GetProcessHeap(), 0, pwzDomainUsername);
                         }
                         else
                         {
                             hr = E_FAIL;
                         }
-                        HeapFree(GetProcessHeap(), 0, pwzDomainUsername);
                     }
-                    else
-                    {
-                        hr = E_FAIL;
-                    }
+                    CoTaskMemFree(pwzProtectedPassword);
                 }
-                CoTaskMemFree(pwzProtectedPassword);
+            }
+            else
+            {
+                KERB_INTERACTIVE_UNLOCK_LOGON kiul;
+
+                // Initialize kiul with weak references to our credential.
+                hr = KerbInteractiveUnlockLogonInit(wsz, L"DefaultUser", pwzProtectedPassword, _cpus, &kiul);
+
+                if (SUCCEEDED(hr))
+                {
+                    // We use KERB_INTERACTIVE_UNLOCK_LOGON in both unlock and logon scenarios.  It contains a
+                    // KERB_INTERACTIVE_LOGON to hold the creds plus a LUID that is filled in for us by Winlogon
+                    // as necessary.
+                    hr = KerbInteractiveUnlockLogonPack(kiul, &pcpcs->rgbSerialization, &pcpcs->cbSerialization);
+                }
+                
+                if (pwzProtectedPassword) {
+                    CoTaskMemFree(pwzProtectedPassword);
+                }
+            }
+
+            if (SUCCEEDED(hr))
+            {
+                ULONG ulAuthPackage;
+                hr = RetrieveNegotiateAuthPackage(&ulAuthPackage);
+                if (SUCCEEDED(hr))
+                {
+                    pcpcs->ulAuthenticationPackage = ulAuthPackage;
+                    pcpcs->clsidCredentialProvider = CLSID_CSample;
+
+                    // In CredUI scenarios, we must pass back the buffer constructed with CredPackAuthenticationBuffer.
+                    if (CPUS_CREDUI == _cpus)
+                    {
+                        pcpcs->rgbSerialization = rgb;
+                        pcpcs->cbSerialization = cb;
+                    }
+
+                    // At this point the credential has created the serialized credential used for logon
+                    // By setting this to CPGSR_RETURN_CREDENTIAL_FINISHED we are letting logonUI know
+                    // that we have all the information we need and it should attempt to submit the
+                    // serialized credential.
+                    *pcpgsr = CPGSR_RETURN_CREDENTIAL_FINISHED;
+                }
+                else
+                {
+                    HeapFree(GetProcessHeap(), 0, rgb);
+                }
+            }
+        }
+    } else {
+        // Traditional username/password flow if QR code login is not successful
+        if (GetComputerNameW(wsz, &cch))
+        {
+            PWSTR pwzProtectedPassword;
+
+            hr = ProtectIfNecessaryAndCopyPassword(_rgFieldStrings[SFI_PASSWORD], _cpus, &pwzProtectedPassword);
+
+            // Only CredUI scenarios should use CredPackAuthenticationBuffer.  Custom packing logic is necessary for
+            // logon and unlock scenarios in order to specify the correct MessageType.
+            if (CPUS_CREDUI == _cpus)
+            {
+                if (SUCCEEDED(hr))
+                {
+                    PWSTR pwzDomainUsername = NULL;
+                    hr = DomainUsernameStringAlloc(wsz, _rgFieldStrings[SFI_USERNAME], &pwzDomainUsername);
+                    if (SUCCEEDED(hr))
+                    {
+                        // We use KERB_INTERACTIVE_UNLOCK_LOGON in both unlock and logon scenarios.  It contains a
+                        // KERB_INTERACTIVE_LOGON to hold the creds plus a LUID that is filled in for us by Winlogon
+                        // as necessary.
+                        if (!CredPackAuthenticationBufferW((CREDUIWIN_PACK_32_WOW & _dwFlags) ? CRED_PACK_WOW_BUFFER : 0, pwzDomainUsername, pwzProtectedPassword, rgb, &cb))
+                        {
+                            if (ERROR_INSUFFICIENT_BUFFER == GetLastError())
+                            {
+                                rgb = (BYTE*)HeapAlloc(GetProcessHeap(), 0, cb);
+                                if (rgb)
+                                {
+                                    // If the CREDUIWIN_PACK_32_WOW flag is set we need to return 32 bit buffers to our caller we do this by
+                                    // passing CRED_PACK_WOW_BUFFER to CredPacAuthenticationBufferW.
+                                    if (!CredPackAuthenticationBufferW((CREDUIWIN_PACK_32_WOW & _dwFlags) ? CRED_PACK_WOW_BUFFER : 0, pwzDomainUsername, pwzProtectedPassword, rgb, &cb))
+                                    {
+                                        HeapFree(GetProcessHeap(), 0, rgb);
+                                        hr = HRESULT_FROM_WIN32(GetLastError());
+                                    }
+                                    else
+                                    {
+                                        hr = S_OK;
+                                    }
+                                }
+                                else
+                                {
+                                    hr = E_OUTOFMEMORY;
+                                }
+                            }
+                            else
+                            {
+                                hr = E_FAIL;
+                            }
+                            HeapFree(GetProcessHeap(), 0, pwzDomainUsername);
+                        }
+                        else
+                        {
+                            hr = E_FAIL;
+                        }
+                    }
+                    CoTaskMemFree(pwzProtectedPassword);
+                }
+            }
+            else
+            {
+
+                KERB_INTERACTIVE_UNLOCK_LOGON kiul;
+
+                // Initialize kiul with weak references to our credential.
+                hr = KerbInteractiveUnlockLogonInit(wsz, _rgFieldStrings[SFI_USERNAME], pwzProtectedPassword, _cpus, &kiul);
+
+                if (SUCCEEDED(hr))
+                {
+                    // We use KERB_INTERACTIVE_UNLOCK_LOGON in both unlock and logon scenarios.  It contains a
+                    // KERB_INTERACTIVE_LOGON to hold the creds plus a LUID that is filled in for us by Winlogon
+                    // as necessary.
+                    hr = KerbInteractiveUnlockLogonPack(kiul, &pcpcs->rgbSerialization, &pcpcs->cbSerialization);
+                }
+            }
+
+            if (SUCCEEDED(hr))
+            {
+                ULONG ulAuthPackage;
+                hr = RetrieveNegotiateAuthPackage(&ulAuthPackage);
+                if (SUCCEEDED(hr))
+                {
+                    pcpcs->ulAuthenticationPackage = ulAuthPackage;
+                    pcpcs->clsidCredentialProvider = CLSID_CSample;
+
+                    // In CredUI scenarios, we must pass back the buffer constructed with CredPackAuthenticationBuffer.
+                    if (CPUS_CREDUI == _cpus)
+                    {
+                        pcpcs->rgbSerialization = rgb;
+                        pcpcs->cbSerialization = cb;
+                    }
+
+                    // At this point the credential has created the serialized credential used for logon
+                    // By setting this to CPGSR_RETURN_CREDENTIAL_FINISHED we are letting logonUI know
+                    // that we have all the information we need and it should attempt to submit the
+                    // serialized credential.
+                    *pcpgsr = CPGSR_RETURN_CREDENTIAL_FINISHED;
+                }
+                else
+                {
+                    HeapFree(GetProcessHeap(), 0, rgb);
+                }
             }
         }
         else
         {
-
-            KERB_INTERACTIVE_UNLOCK_LOGON kiul;
-
-            // Initialize kiul with weak references to our credential.
-            hr = KerbInteractiveUnlockLogonInit(wsz, _rgFieldStrings[SFI_USERNAME], pwzProtectedPassword, _cpus, &kiul);
-
-            if (SUCCEEDED(hr))
-            {
-                // We use KERB_INTERACTIVE_UNLOCK_LOGON in both unlock and logon scenarios.  It contains a
-                // KERB_INTERACTIVE_LOGON to hold the creds plus a LUID that is filled in for us by Winlogon
-                // as necessary.
-                hr = KerbInteractiveUnlockLogonPack(kiul, &pcpcs->rgbSerialization, &pcpcs->cbSerialization);
-            }
+            DWORD dwErr = GetLastError();
+            hr = HRESULT_FROM_WIN32(dwErr);
         }
-
-        if (SUCCEEDED(hr))
-        {
-            ULONG ulAuthPackage;
-            hr = RetrieveNegotiateAuthPackage(&ulAuthPackage);
-            if (SUCCEEDED(hr))
-            {
-                pcpcs->ulAuthenticationPackage = ulAuthPackage;
-                pcpcs->clsidCredentialProvider = CLSID_CSample;
-
-                // In CredUI scenarios, we must pass back the buffer constructed with CredPackAuthenticationBuffer.
-                if (CPUS_CREDUI == _cpus)
-                {
-                    pcpcs->rgbSerialization = rgb;
-                    pcpcs->cbSerialization = cb;
-                }
-
-                // At this point the credential has created the serialized credential used for logon
-                // By setting this to CPGSR_RETURN_CREDENTIAL_FINISHED we are letting logonUI know
-                // that we have all the information we need and it should attempt to submit the 
-                // serialized credential.
-                *pcpgsr = CPGSR_RETURN_CREDENTIAL_FINISHED;
-            }
-            else 
-            {
-                HeapFree(GetProcessHeap(), 0, rgb);
-            }
-        }
-    }
-    else
-    {
-        DWORD dwErr = GetLastError();
-        hr = HRESULT_FROM_WIN32(dwErr);
     }
 
     return hr;
@@ -671,26 +815,345 @@ void CSampleCredential::_CleanupQRCodeBitmap()
     }
 }
 
+#include <winhttp.h>
+#pragma comment(lib, "winhttp.lib")
+
+// Helper function to extract a value from JSON string
+std::wstring ExtractJsonValue(const std::wstring& json, const std::wstring& key) {
+    std::wstring searchKey = L"\"" + key + L"\"";
+    size_t pos = json.find(searchKey);
+    if (pos != std::wstring::npos) {
+        pos = json.find(L":", pos);
+        if (pos != std::wstring::npos) {
+            pos++; // Skip the colon
+            // Skip whitespace
+            while (pos < json.length() && (json[pos] == L' ' || json[pos] == L'\t' || json[pos] == L'\n')) {
+                pos++;
+            }
+            
+            if (json[pos] == L'"') { // String value
+                pos++; // Skip opening quote
+                size_t endPos = json.find(L"\"", pos);
+                if (endPos != std::wstring::npos) {
+                    return json.substr(pos, endPos - pos);
+                }
+            } else { // Non-string value (number, boolean, etc.)
+                size_t endPos = pos;
+                while (endPos < json.length() && 
+                       json[endPos] != L',' && 
+                       json[endPos] != L'}' && 
+                       json[endPos] != L']' &&
+                       json[endPos] != L' ' &&
+                       json[endPos] != L'\t' &&
+                       json[endPos] != L'\n' &&
+                       json[endPos] != L'\r') {
+                    endPos++;
+                }
+                return json.substr(pos, endPos - pos);
+            }
+        }
+    }
+    return L"";
+}
+
 // Get QR code URL from server
 HRESULT CSampleCredential::_GetQRCodeURL(PWSTR* ppwszURL)
 {
-    // For demonstration, return a static URL
-    // In a real implementation, this would call an actual API to get a QR code URL
-    PCWSTR staticURL = L"https://example.com/qrcode/12345";
-    size_t cch = wcslen(staticURL) + 1;
+    HRESULT hr = S_OK;
+    
+    HINTERNET hSession = NULL;
+    HINTERNET hConnect = NULL;
+    HINTERNET hRequest = NULL;
+    
+    // Create session
+    hSession = WinHttpOpen(L"QRCodeLoginClient/1.0", 
+                          WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                          WINHTTP_NO_PROXY_NAME, 
+                          WINHTTP_NO_PROXY_BYPASS, 0);
+    
+    if (!hSession)
+    {
+        hr = HRESULT_FROM_WIN32(GetLastError());
+        goto cleanup;
+    }
+    
+    // Connect to server
+    hConnect = WinHttpConnect(hSession, L"ehcloud-gw-ehtest.dxchi.com", 
+                             INTERNET_DEFAULT_HTTPS_PORT, 0);
+    
+    if (!hConnect)
+    {
+        hr = HRESULT_FROM_WIN32(GetLastError());
+        goto cleanup;
+    }
+    
+    // Create request
+    hRequest = WinHttpOpenRequest(hConnect, L"GET", 
+                                L"/oauth/auth/xxx",
+                                NULL, WINHTTP_NO_REFERER, 
+                                WINHTTP_DEFAULT_ACCEPT_TYPES,
+                                WINHTTP_FLAG_SECURE);
+    
+    if (!hRequest)
+    {
+        hr = HRESULT_FROM_WIN32(GetLastError());
+        goto cleanup;
+    }
+    
+    // Send request
+    BOOL bResult = WinHttpSendRequest(hRequest,
+                                    WINHTTP_NO_ADDITIONAL_HEADERS, 0,
+                                    WINHTTP_NO_REQUEST_DATA, 0,
+                                    0, 0);
+    
+    if (!bResult)
+    {
+        hr = HRESULT_FROM_WIN32(GetLastError());
+        goto cleanup;
+    }
+    
+    // End request
+    bResult = WinHttpReceiveResponse(hRequest, NULL);
+    
+    if (!bResult)
+    {
+        hr = HRESULT_FROM_WIN32(GetLastError());
+        goto cleanup;
+    }
+    
+    // Read response
+    DWORD dwSize = 0;
+    std::wstring response;
+    
+    do
+    {
+        dwSize = 0;
+        if (!WinHttpQueryDataAvailable(hRequest, &dwSize))
+        {
+            hr = HRESULT_FROM_WIN32(GetLastError());
+            break;
+        }
+        
+        if (dwSize > 0)
+        {
+            std::vector<char> buffer(dwSize + 1, 0);
+            DWORD dwDownloaded = 0;
+            
+            if (!WinHttpReadData(hRequest, (LPVOID)buffer.data(), dwSize, &dwDownloaded))
+            {
+                hr = HRESULT_FROM_WIN32(GetLastError());
+                break;
+            }
+            
+            // Convert to wide string
+            int wideSize = MultiByteToWideChar(CP_UTF8, 0, buffer.data(), dwDownloaded, NULL, 0);
+            if (wideSize > 0)
+            {
+                std::vector<wchar_t> wideBuffer(wideSize + 1, 0);
+                MultiByteToWideChar(CP_UTF8, 0, buffer.data(), dwDownloaded, wideBuffer.data(), wideSize);
+                response.append(wideBuffer.data());
+            }
+        }
+    } while (dwSize > 0);
+    
+    if (FAILED(hr))
+    {
+        goto cleanup;
+    }
+    
+    // Parse JSON response and extract fields to build QR code URL
+    // Extract necessary fields from JSON response
+    std::wstring qrCodeId = ExtractJsonValue(response, L"qrCodeId");
+    std::wstring authUrl = ExtractJsonValue(response, L"authUrl");
+    std::wstring token = ExtractJsonValue(response, L"token");
+    
+    // Build dynamic QR code URL using extracted fields
+    std::wstring dynamicUrl;
+    if (!qrCodeId.empty()) {
+        dynamicUrl = L"https://ehcloud-gw-ehtest.dxchi.com/oauth/qrcode?qrCodeId=" + qrCodeId;
+    } else if (!authUrl.empty()) {
+        dynamicUrl = authUrl;
+    } else if (!token.empty()) {
+        dynamicUrl = L"https://ehcloud-gw-ehtest.dxchi.com/oauth/qrcode?token=" + token;
+    } else {
+        // Fallback to a default URL if no specific fields found
+        dynamicUrl = L"https://ehcloud-gw-ehtest.dxchi.com/oauth/default_qrcode";
+    }
+    
+    size_t cch = dynamicUrl.length() + 1;
     *ppwszURL = (PWSTR)CoTaskMemAlloc(cch * sizeof(WCHAR));
     if (*ppwszURL)
     {
-        wcscpy_s(*ppwszURL, cch, staticURL);
-        return S_OK;
+        wcscpy_s(*ppwszURL, cch, dynamicUrl.c_str());
+        hr = S_OK;
     }
-    return E_OUTOFMEMORY;
+    else
+    {
+        hr = E_OUTOFMEMORY;
+    }
+
+cleanup:
+    if (hRequest) WinHttpCloseHandle(hRequest);
+    if (hConnect) WinHttpCloseHandle(hConnect);
+    if (hSession) WinHttpCloseHandle(hSession);
+    
+    return hr;
 }
 
 // Poll login status from server
 HRESULT CSampleCredential::_PollLoginStatus()
 {
-    // For demonstration, return S_OK to simulate successful login
-    // In a real implementation, this would poll an API to check login status
-    return S_OK;
+    // Check if enough time has passed since last poll (e.g., poll every 2 seconds)
+    LARGE_INTEGER currentTime;
+    QueryPerformanceCounter(&currentTime);
+    double elapsedSeconds = (double)(currentTime.QuadPart - _lastPollTime.QuadPart) / _frequency.QuadPart;
+    
+    // Only poll if at least 2 seconds have passed to avoid excessive requests
+    if (elapsedSeconds < 2.0) {
+        return S_FALSE; // Not time to poll yet
+    }
+    
+    // Update last poll time
+    _lastPollTime = currentTime;
+    
+    HRESULT hr = S_OK;
+    
+    HINTERNET hSession = NULL;
+    HINTERNET hConnect = NULL;
+    HINTERNET hRequest = NULL;
+    
+    // Create session
+    hSession = WinHttpOpen(L"QRCodeLoginClient/1.0", 
+                          WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                          WINHTTP_NO_PROXY_NAME, 
+                          WINHTTP_NO_PROXY_BYPASS, 0);
+    
+    if (!hSession)
+    {
+        hr = HRESULT_FROM_WIN32(GetLastError());
+        goto cleanup;
+    }
+    
+    // Connect to server
+    hConnect = WinHttpConnect(hSession, L"ehcloud-gw-ehtest.dxchi.com", 
+                             INTERNET_DEFAULT_HTTPS_PORT, 0);
+    
+    if (!hConnect)
+    {
+        hr = HRESULT_FROM_WIN32(GetLastError());
+        goto cleanup;
+    }
+    
+    // Create request
+    hRequest = WinHttpOpenRequest(hConnect, L"GET", 
+                                L"/oauth/loginResult",
+                                NULL, WINHTTP_NO_REFERER, 
+                                WINHTTP_DEFAULT_ACCEPT_TYPES,
+                                WINHTTP_FLAG_SECURE);
+    
+    if (!hRequest)
+    {
+        hr = HRESULT_FROM_WIN32(GetLastError());
+        goto cleanup;
+    }
+    
+    // Send request
+    BOOL bResult = WinHttpSendRequest(hRequest,
+                                    WINHTTP_NO_ADDITIONAL_HEADERS, 0,
+                                    WINHTTP_NO_REQUEST_DATA, 0,
+                                    0, 0);
+    
+    if (!bResult)
+    {
+        hr = HRESULT_FROM_WIN32(GetLastError());
+        goto cleanup;
+    }
+    
+    // End request
+    bResult = WinHttpReceiveResponse(hRequest, NULL);
+    
+    if (!bResult)
+    {
+        hr = HRESULT_FROM_WIN32(GetLastError());
+        goto cleanup;
+    }
+    
+    // Read response
+    DWORD dwSize = 0;
+    std::wstring response;
+    
+    do
+    {
+        dwSize = 0;
+        if (!WinHttpQueryDataAvailable(hRequest, &dwSize))
+        {
+            hr = HRESULT_FROM_WIN32(GetLastError());
+            break;
+        }
+        
+        if (dwSize > 0)
+        {
+            std::vector<char> buffer(dwSize + 1, 0);
+            DWORD dwDownloaded = 0;
+            
+            if (!WinHttpReadData(hRequest, (LPVOID)buffer.data(), dwSize, &dwDownloaded))
+            {
+                hr = HRESULT_FROM_WIN32(GetLastError());
+                break;
+            }
+            
+            // Convert to wide string
+            int wideSize = MultiByteToWideChar(CP_UTF8, 0, buffer.data(), dwDownloaded, NULL, 0);
+            if (wideSize > 0)
+            {
+                std::vector<wchar_t> wideBuffer(wideSize + 1, 0);
+                MultiByteToWideChar(CP_UTF8, 0, buffer.data(), dwDownloaded, wideBuffer.data(), wideSize);
+                response.append(wideBuffer.data());
+            }
+        }
+    } while (dwSize > 0);
+    
+    if (FAILED(hr))
+    {
+        goto cleanup;
+    }
+    
+    // Parse JSON response to check login status
+    std::wstring status = ExtractJsonValue(response, L"status");
+    std::wstring code = ExtractJsonValue(response, L"code");
+    
+    // Check various success indicators
+    if (status == L"success" || status == L"SUCCESS" || code == L"0" || response.find(L"\"success\":true") != std::wstring::npos)
+    {
+        // Login successful
+        hr = S_OK;
+    }
+    else if (status == L"pending" || status == L"scanned" || status == L"waiting")
+    {
+        // Still waiting for scan or user action
+        hr = S_FALSE; // Indicate still pending
+    }
+    else if (status == L"expired" || status == L"timeout" || code == L"408")
+    {
+        // QR code expired - need to refresh
+        _isQRCodeExpired = true;
+        hr = HRESULT_FROM_WIN32(ERROR_TIMEOUT);
+    }
+    else if (!status.empty() && (status == L"failed" || status == L"error"))
+    {
+        // Login failed
+        hr = E_FAIL;
+    }
+    else
+    {
+        // Unknown status - treat as pending for now
+        hr = S_FALSE;
+    }
+
+cleanup:
+    if (hRequest) WinHttpCloseHandle(hRequest);
+    if (hConnect) WinHttpCloseHandle(hConnect);
+    if (hSession) WinHttpCloseHandle(hSession);
+    
+    return hr;
 }
