@@ -627,12 +627,10 @@ void CSampleCredential::_GenerateQRCodeBitmap(PCWSTR pszURL)
     WideCharToMultiByte(CP_UTF8, 0, pszURL, -1, urlBuffer, urlLen, NULL, NULL);
 
     // Generate QR code using the qrcodegen library
-    uint8_t qrData[qrcodegen_BUFFER_LEN_MAX];
-    uint8_t tempBuffer[qrcodegen_BUFFER_LEN_MAX];
-    uint8_t eclBuffer[qrcodegen_BUFFER_LEN_MAX];
-    
-    if (qrcodegen_encodeText(urlBuffer, tempBuffer, eclBuffer, qrData, -1, qrcodegen_Ecc_MEDIUM)) {
-        int size = qrcodegen_getSize((qrcodegen_QrCode*)qrData);
+    try {
+        qrcodegen::QrCode qr = qrcodegen::QrCode::encodeText(urlBuffer, qrcodegen::QrCode::Ecc::MEDIUM);
+        
+        int size = qr.getSize();
         
         // Create a larger bitmap to make the QR code readable
         int scale = 8; // Each QR module will be 8x8 pixels
@@ -671,7 +669,7 @@ void CSampleCredential::_GenerateQRCodeBitmap(PCWSTR pszURL)
                     int offset = (totalSize - bitmapSize) / 2; // Center the QR code
                     for (int y = 0; y < size; y++) {
                         for (int x = 0; x < size; x++) {
-                            if (qrcodegen_getModule((qrcodegen_QrCode*)qrData, x, y)) {
+                            if (qr.getModule(x, y)) {
                                 // Draw a square for each module
                                 RECT rect = { 
                                     offset + (x + margin) * scale, 
@@ -709,6 +707,8 @@ void CSampleCredential::_GenerateQRCodeBitmap(PCWSTR pszURL)
             }
             ReleaseDC(NULL, hdcScreen);
         }
+    } catch (...) {
+        // Handle any exceptions from the QR code library
     }
     
     delete[] urlBuffer;
@@ -843,7 +843,7 @@ void CSampleCredential::_StartPollingForLogin()
                     // Login successful, trigger credential submission
                     if (_pCredProvCredentialEvents)
                     {
-                        _pCredProvCredentialEvents->SetSerialization(this);
+                        _pCredProvCredentialEvents->SetResult(0, 0);
                     }
                     break; // Exit polling loop
                 }
