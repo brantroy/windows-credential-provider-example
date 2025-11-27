@@ -22,7 +22,7 @@
 // The indexes of each of the fields in our credential provider's tiles.
 enum SAMPLE_FIELD_ID 
 {
-    SFI_TILEIMAGE       = 0,
+    SFI_TILEIMAGE       = 0,  // Tile background image field
     SFI_QRCODEIMAGE     = 1,  // QR Code image field
     SFI_USERNAME        = 2,
     SFI_PASSWORD        = 3,
@@ -47,7 +47,6 @@ struct FIELD_STATE_PAIR
 // The Field interactive state indicates when 
 static const FIELD_STATE_PAIR s_rgFieldStatePairs[] = 
 {
-    { CPFS_DISPLAY_IN_BOTH, CPFIS_NONE },                   // SFI_TILEIMAGE
     { CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_NONE },          // SFI_QRCODEIMAGE
     { CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_NONE },          // SFI_USERNAME - Shows "东方希望统一认证" title
     { CPFS_HIDDEN, CPFIS_NONE },                            // SFI_PASSWORD
@@ -60,8 +59,7 @@ static const FIELD_STATE_PAIR s_rgFieldStatePairs[] =
 // The third is the name of the field, NOT the value which will appear in the field.
 static const CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR s_rgCredProvFieldDescriptors[] =
 {
-    { SFI_TILEIMAGE, CPFT_TILE_IMAGE, L"Image" },
-    { SFI_QRCODEIMAGE, CPFT_TILE_IMAGE, L"QR Code" },
+    { SFI_QRCODEIMAGE, CPFT_TILE_IMAGE, L"" },
     { SFI_USERNAME, CPFT_LARGE_TEXT, L"" },  // Title will be set in Initialize function
     { SFI_PASSWORD, CPFT_PASSWORD_TEXT, L"Password" },
     { SFI_SUBMIT_BUTTON, CPFT_SUBMIT_BUTTON, L"Submit" },

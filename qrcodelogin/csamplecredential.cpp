@@ -24,6 +24,10 @@
 #include "guid.h"
 #include "qrcodegen.h"
 #include <vector>
+#include <wincodec.h>
+#include <shlwapi.h>
+#pragma comment(lib, "windowscodecs.lib")
+#pragma comment(lib, "shlwapi.lib")
 
 using namespace Gdiplus;
 #pragma comment(lib, "gdiplus.lib")
@@ -205,6 +209,82 @@ HRESULT CSampleCredential::GetStringValue(
     return hr;
 }
 
+// Helper function to load PNG image using WIC
+HBITMAP LoadPngImage(LPCWSTR filename)
+{
+    IWICImagingFactory* pWICFactory = NULL;
+    IWICBitmapDecoder* pDecoder = NULL;
+    IWICBitmapFrameDecode* pFrame = NULL;
+    IWICFormatConverter* pConverter = NULL;
+    
+    HBITMAP hBitmap = NULL;
+    
+    HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER, 
+                                  IID_IWICImagingFactory, (void**)&pWICFactory);
+    if (SUCCEEDED(hr))
+    {
+        hr = pWICFactory->CreateDecoderFromFilename(filename, NULL, GENERIC_READ, 
+                                                    WICDecodeMetadataCacheOnLoad, &pDecoder);
+        if (SUCCEEDED(hr))
+        {
+            hr = pDecoder->GetFrame(0, &pFrame);
+            if (SUCCEEDED(hr))
+            {
+                hr = pWICFactory->CreateFormatConverter(&pConverter);
+                if (SUCCEEDED(hr))
+                {
+                    hr = pConverter->Initialize(pFrame, 
+                                               GUID_WICPixelFormat32bppPBGRA, 
+                                               WICBitmapDitherTypeNone, 
+                                               NULL, 
+                                               0.f, 
+                                               WICBitmapPaletteTypeMedianCut);
+                    if (SUCCEEDED(hr))
+                    {
+                        UINT width, height;
+                        hr = pFrame->GetSize(&width, &height);
+                        if (SUCCEEDED(hr))
+                        {
+                            // Create DIB
+                            BITMAPINFO bmi = {0};
+                            bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+                            bmi.bmiHeader.biWidth = width;
+                            bmi.bmiHeader.biHeight = -((LONG)height); // Top-down DIB
+                            bmi.bmiHeader.biPlanes = 1;
+                            bmi.bmiHeader.biBitCount = 32;
+                            bmi.bmiHeader.biCompression = BI_RGB;
+                            
+                            void* pvImage = NULL;
+                            HDC hdcScreen = GetDC(NULL);
+                            HBITMAP hTempBitmap = CreateDIBSection(hdcScreen, &bmi, DIB_RGB_COLORS, &pvImage, NULL, 0);
+                            ReleaseDC(NULL, hdcScreen);
+                            
+                            if (hTempBitmap)
+                            {
+                                hr = pConverter->CopyPixels(NULL, width * 4, width * height * 4, (BYTE*)pvImage);
+                                if (SUCCEEDED(hr))
+                                {
+                                    hBitmap = hTempBitmap;
+                                }
+                                else
+                                {
+                                    DeleteObject(hTempBitmap);
+                                }
+                            }
+                        }
+                    }
+                    pConverter->Release();
+                }
+                pFrame->Release();
+            }
+            pDecoder->Release();
+        }
+        pWICFactory->Release();
+    }
+    
+    return hBitmap;
+}
+
 // Gets the image to show in the user tile.
 HRESULT CSampleCredential::GetBitmapValue(
     __in DWORD dwFieldID, 
@@ -214,7 +294,15 @@ HRESULT CSampleCredential::GetBitmapValue(
     HRESULT hr;
     if ((SFI_TILEIMAGE == dwFieldID) && phbmp)
     {
-        HBITMAP hbmp = LoadBitmap(HINST_THISDLL, MAKEINTRESOURCE(IDB_TILE_IMAGE));
+        // Get the module path and append the PNG filename
+        WCHAR modulePath[MAX_PATH];
+        HMODULE hModule = NULL;
+        GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCWSTR)&SFI_TILEIMAGE, &hModule);
+        GetModuleFileName(hModule, modulePath, MAX_PATH);
+        PathRemoveFileSpec(modulePath);
+        PathAppend(modulePath, L"tileimage.png");
+
+        HBITMAP hbmp = LoadPngImage(modulePath);
         if (hbmp != NULL)
         {
             hr = S_OK;
