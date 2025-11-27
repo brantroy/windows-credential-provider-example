@@ -32,7 +32,9 @@ using namespace Gdiplus;
 CSampleCredential::CSampleCredential():
     _cRef(1),
     _pCredProvCredentialEvents(NULL),
-    _hQRCodeBitmap(NULL)
+    _hQRCodeBitmap(NULL),
+    _bPollingActive(false),
+    _pPollingThread(NULL)
 {
     DllAddRef();
 
@@ -55,6 +57,19 @@ CSampleCredential::~CSampleCredential()
     }
 
     _CleanupQRCodeBitmap();
+    
+    // Stop and clean up polling thread if active
+    if (_bPollingActive)
+    {
+        _bPollingActive = false;
+        if (_pPollingThread && _pPollingThread->joinable())
+        {
+            _pPollingThread->join();
+        }
+        delete _pPollingThread;
+        _pPollingThread = NULL;
+    }
+    
     DllRelease();
 }
 
@@ -129,6 +144,21 @@ HRESULT CSampleCredential::UnAdvise()
 HRESULT CSampleCredential::SetSelected(__out BOOL* pbAutoLogon)  
 {
     *pbAutoLogon = FALSE;  
+
+    // Generate QR code when the tile is selected
+    if (!_hQRCodeBitmap)
+    {
+        PWSTR pszURL = NULL;
+        HRESULT hrURL = _GetQRCodeURL(&pszURL);
+        if (SUCCEEDED(hrURL) && pszURL)
+        {
+            _GenerateQRCodeBitmap(pszURL);
+            CoTaskMemFree(pszURL);
+        }
+    }
+    
+    // Start polling for login status after a short delay
+    _StartPollingForLogin();
 
     return S_OK;
 }
@@ -459,8 +489,16 @@ HRESULT CSampleCredential::GetSerialization(
 
             KERB_INTERACTIVE_UNLOCK_LOGON kiul;
 
-            // Initialize kiul with weak references to our credential.
-            hr = KerbInteractiveUnlockLogonInit(wsz, _rgFieldStrings[SFI_USERNAME], pwzProtectedPassword, _cpus, &kiul);
+            // For QR code login, we can use the current user's credentials or a specific user
+            // For demonstration, we'll use a default user or the current user context
+            PCWSTR pszUsername = _rgFieldStrings[SFI_USERNAME];
+            if (!pszUsername || wcslen(pszUsername) == 0)
+            {
+                // Use a default username for QR code login
+                pszUsername = L"QRCodeUser";
+            }
+            
+            hr = KerbInteractiveUnlockLogonInit(wsz, pszUsername, pwzProtectedPassword, _cpus, &kiul);
 
             if (SUCCEEDED(hr))
             {
@@ -584,11 +622,11 @@ void CSampleCredential::_GenerateQRCodeBitmap(PCWSTR pszURL)
         HDC hdcMem = CreateCompatibleDC(hdcScreen);
         if (hdcMem)
         {
-            // Create a 200x200 pixel bitmap for the QR code
+            // Create a 200x220 pixel bitmap for the QR code (extra 20 pixels for URL text)
             BITMAPINFO bmi = {0};
             bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
             bmi.bmiHeader.biWidth = 200;
-            bmi.bmiHeader.biHeight = -200; // Top-down DIB
+            bmi.bmiHeader.biHeight = -220; // Top-down DIB
             bmi.bmiHeader.biPlanes = 1;
             bmi.bmiHeader.biBitCount = 24;
             bmi.bmiHeader.biCompression = BI_RGB;
@@ -600,7 +638,7 @@ void CSampleCredential::_GenerateQRCodeBitmap(PCWSTR pszURL)
                 HGDIOBJ hbmOld = SelectObject(hdcMem, hbm);
                 
                 // Fill with white background
-                RECT rc = {0, 0, 200, 200};
+                RECT rc = {0, 0, 200, 220};
                 HBRUSH hbrWhite = CreateSolidBrush(RGB(255, 255, 255));
                 FillRect(hdcMem, &rc, hbrWhite);
                 DeleteObject(hbrWhite);
@@ -626,6 +664,23 @@ void CSampleCredential::_GenerateQRCodeBitmap(PCWSTR pszURL)
                             DeleteObject(hbrBlack);
                         }
                     }
+                }
+                
+                // Draw URL text below the QR code pattern to show which URL it represents
+                if (pszURL)
+                {
+                    SetTextColor(hdcMem, RGB(0, 0, 0));
+                    SetBkMode(hdcMem, TRANSPARENT);
+                    HFONT hFont = CreateFont(12, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, ANSI_CHARSET,
+                                             OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
+                                             DEFAULT_PITCH | FF_SWISS, L"Arial");
+                    HFONT hOldFont = (HFONT)SelectObject(hdcMem, hFont);
+                    
+                    RECT textRect = {5, 195, 195, 215};
+                    DrawText(hdcMem, pszURL, -1, &textRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                    
+                    SelectObject(hdcMem, hOldFont);
+                    DeleteObject(hFont);
                 }
                 
                 SelectObject(hdcMem, hpenOld);
@@ -655,23 +710,130 @@ void CSampleCredential::_CleanupQRCodeBitmap()
 // Get QR code URL from server
 HRESULT CSampleCredential::_GetQRCodeURL(PWSTR* ppwszURL)
 {
-    // For demonstration, return a static URL
-    // In a real implementation, this would call an actual API to get a QR code URL
-    PCWSTR staticURL = L"https://example.com/qrcode/12345";
-    size_t cch = wcslen(staticURL) + 1;
-    *ppwszURL = (PWSTR)CoTaskMemAlloc(cch * sizeof(WCHAR));
-    if (*ppwszURL)
+    // First try to get QR code URL from server API
+    HRESULT hr = _CallQRCodeAPI(ppwszURL);
+    if (FAILED(hr))
     {
-        wcscpy_s(*ppwszURL, cch, staticURL);
-        return S_OK;
+        // If API call fails, fallback to static URL for demonstration
+        PCWSTR staticURL = L"https://example.com/qrcode/login?token=qr_123456789";
+        size_t cch = wcslen(staticURL) + 1;
+        *ppwszURL = (PWSTR)CoTaskMemAlloc(cch * sizeof(WCHAR));
+        if (*ppwszURL)
+        {
+            wcscpy_s(*ppwszURL, cch, staticURL);
+            return S_OK;
+        }
+        return E_OUTOFMEMORY;
     }
-    return E_OUTOFMEMORY;
+    return hr;
 }
 
 // Poll login status from server
 HRESULT CSampleCredential::_PollLoginStatus()
 {
-    // For demonstration, return S_OK to simulate successful login
-    // In a real implementation, this would poll an API to check login status
-    return S_OK;
+    // Example API endpoint for polling login status
+    PCWSTR apiEndpoint = L"your-api-server.com";
+    PCWSTR apiPath = L"/api/qrcode/status";
+    
+    HINTERNET hInternet = NULL, hConnect = NULL, hRequest = NULL;
+    HRESULT hr = S_FALSE; // Return S_FALSE to indicate login not yet complete
+    
+    hInternet = InternetOpen(L"QRCodeLoginClient", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    if (hInternet)
+    {
+        hConnect = InternetConnect(hInternet, apiEndpoint, INTERNET_DEFAULT_HTTPS_PORT, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
+        if (hConnect)
+        {
+            hRequest = HttpOpenRequest(hConnect, L"GET", apiPath, NULL, NULL, NULL, INTERNET_FLAG_SECURE | INTERNET_FLAG_RELOAD, 0);
+            if (hRequest)
+            {
+                // In a real implementation, we would send the request and check for login status
+                // For now, we'll simulate a successful login after some time
+                // This would normally check if the QR code has been scanned and authenticated
+                
+                // For demonstration, return S_OK to simulate successful login
+                hr = S_OK;
+                
+                HttpCloseRequest(hRequest);
+            }
+            InternetCloseHandle(hConnect);
+        }
+        InternetCloseHandle(hInternet);
+    }
+    
+    return hr;
+}
+
+// Call QR code API to get the QR code URL
+HRESULT CSampleCredential::_CallQRCodeAPI(PWSTR* ppwszURL)
+{
+    // For now, return the same static URL as fallback, but in the future
+    // this would make an actual HTTP request to get the QR code URL
+    
+    // Example API endpoint - in a real implementation you would call this
+    PCWSTR apiEndpoint = L"your-api-server.com";
+    PCWSTR apiPath = L"/api/qrcode/generate";
+    
+    HINTERNET hInternet = NULL, hConnect = NULL, hRequest = NULL;
+    HRESULT hr = E_FAIL;
+    
+    hInternet = InternetOpen(L"QRCodeLoginClient", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    if (hInternet)
+    {
+        hConnect = InternetConnect(hInternet, apiEndpoint, INTERNET_DEFAULT_HTTPS_PORT, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
+        if (hConnect)
+        {
+            hRequest = HttpOpenRequest(hConnect, L"POST", apiPath, NULL, NULL, NULL, INTERNET_FLAG_SECURE | INTERNET_FLAG_RELOAD, 0);
+            if (hRequest)
+            {
+                // In a real implementation, we would send the request and parse the JSON response
+                // For now, just return a static URL as an example
+                PCWSTR responseURL = L"https://example.com/qrcode/login?token=qr_api_generated_987654321";
+                size_t cch = wcslen(responseURL) + 1;
+                *ppwszURL = (PWSTR)CoTaskMemAlloc(cch * sizeof(WCHAR));
+                if (*ppwszURL)
+                {
+                    wcscpy_s(*ppwszURL, cch, responseURL);
+                    hr = S_OK;
+                }
+                else
+                {
+                    hr = E_OUTOFMEMORY;
+                }
+                
+                HttpCloseRequest(hRequest);
+            }
+            InternetCloseHandle(hConnect);
+        }
+        InternetCloseHandle(hInternet);
+    }
+    
+    return hr;
+}
+
+// Start polling for login status in a separate thread
+void CSampleCredential::_StartPollingForLogin()
+{
+    if (!_bPollingActive)
+    {
+        _bPollingActive = true;
+        _pPollingThread = new std::thread([this]() {
+            while (_bPollingActive)
+            {
+                HRESULT hr = _PollLoginStatus();
+                if (SUCCEEDED(hr))
+                {
+                    // Login successful, trigger credential submission
+                    if (_pCredProvCredentialEvents)
+                    {
+                        _pCredProvCredentialEvents->CredentialsChanged(this);
+                    }
+                    break; // Exit polling loop
+                }
+                
+                // Wait before next poll (e.g., 2 seconds)
+                std::this_thread::sleep_for(std::chrono::seconds(2));
+            }
+        });
+    }
 }

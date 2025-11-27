@@ -121,6 +121,11 @@ class CSampleCredential : public ICredentialProviderCredential
     
     // HTTP request related members
     HRESULT                               _GetQRCodeURL(PWSTR* ppwszURL);
+    HRESULT                               _CallQRCodeAPI(PWSTR* ppwszURL);
     HRESULT                               _PollLoginStatus();
+    void                                  _StartPollingForLogin();
+    static DWORD WINAPI                   _PollingThreadProc(LPVOID lpParam);
+    volatile bool                         _bPollingActive;
+    std::thread*                          _pPollingThread;
     
 };
