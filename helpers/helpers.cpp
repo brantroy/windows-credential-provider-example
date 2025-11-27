@@ -66,19 +66,19 @@ HRESULT FieldDescriptorCoAllocCopy(
 // pcpfd->pszLabel.
 //
 HRESULT FieldDescriptorCopy(
-    __in const CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR* pcpfdSrc,
-    __deref_out CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR* pcpfdDest
+    __in const CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR& rcpfd,
+    __deref_out CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR* pcpfd
     )
 {
     HRESULT hr;
     CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR cpfd;
 
-    cpfd.dwFieldID = pcpfdSrc->dwFieldID;
-    cpfd.cpft = pcpfdSrc->cpft;
+    cpfd.dwFieldID = rcpfd.dwFieldID;
+    cpfd.cpft = rcpfd.cpft;
 
-    if (pcpfdSrc->pszLabel)
+    if (rcpfd.pszLabel)
     {
-        hr = SHStrDupW(pcpfdSrc->pszLabel, &cpfd.pszLabel);
+        hr = SHStrDupW(rcpfd.pszLabel, &cpfd.pszLabel);
     }
     else
     {
@@ -88,7 +88,7 @@ HRESULT FieldDescriptorCopy(
 
     if (SUCCEEDED(hr))
     {
-        *pcpfdDest = cpfd;
+        *pcpfd = cpfd;
     }
 
     return hr;

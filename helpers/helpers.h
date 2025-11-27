@@ -32,8 +32,8 @@ HRESULT FieldDescriptorCoAllocCopy(
 
 //makes a copy of a field descriptor on the normal heap
 HRESULT FieldDescriptorCopy(
-    __in const CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR* pcpfd,
-    __deref_out CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR* pcpfdOut
+    __in const CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR& rcpfd,
+    __deref_out CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR* pcpfd
     );
 
 //creates a UNICODE_STRING from a NULL-terminated string
