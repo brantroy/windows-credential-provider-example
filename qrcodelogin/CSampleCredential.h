@@ -19,6 +19,8 @@
 #include "common.h"
 #include "dll.h"
 #include "resource.h"
+#include <thread>
+#include <chrono>
 
 class CSampleCredential : public ICredentialProviderCredential
 {
@@ -122,5 +124,21 @@ class CSampleCredential : public ICredentialProviderCredential
     // HTTP request related members
     HRESULT                               _GetQRCodeURL(PWSTR* ppwszURL);
     HRESULT                               _PollLoginStatus();
+
+	// new members for QR code login
+    PWSTR _pszToken;            // token
+	FILETIME _ftExpireTime;     // expire time
+	bool _bLoginSuccess;        // login success flag
+	std::thread _pollingThread; // polling thread
+	bool _bStopPolling;         // polling stop flag
+	mutable CRITICAL_SECTION _cs; // critical section for thread safety
+
+	// new methods for QR code login
+    void _FetchQRCodeInfoAsync();
+    void _PollingThread();
+    void _StartPolling();
+    void _StopPolling();
+
+
     
 };
