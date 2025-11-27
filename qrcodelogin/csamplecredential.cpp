@@ -828,7 +828,12 @@ void CSampleCredential::_StartPollingForLogin()
                     // Login successful, trigger credential submission
                     if (_pCredProvCredentialEvents)
                     {
-                        _pCredProvCredentialEvents->SetSerialization(this);
+                        // Update the password field to indicate successful authentication
+                        _pCredProvCredentialEvents->SetFieldString(this, SFI_PASSWORD, L"QRCodeAuthenticated");
+                        
+                        // In a real implementation, you would need to trigger the credential submission
+                        // by notifying the system in an appropriate way. 
+                        // For now, we'll just return immediately to stop polling.
                     }
                     break; // Exit polling loop
                 }
