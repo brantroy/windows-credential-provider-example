@@ -49,9 +49,9 @@ static const FIELD_STATE_PAIR s_rgFieldStatePairs[] =
 {
     { CPFS_DISPLAY_IN_BOTH, CPFIS_NONE },                   // SFI_TILEIMAGE
     { CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_NONE },          // SFI_QRCODEIMAGE
-    { CPFS_DISPLAY_IN_BOTH, CPFIS_NONE },                   // SFI_USERNAME
-    { CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_FOCUSED },       // SFI_PASSWORD
-    { CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_NONE    },       // SFI_SUBMIT_BUTTON   
+    { CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_NONE },          // SFI_USERNAME - Shows "东方希望统一认证" title
+    { CPFS_HIDDEN, CPFIS_NONE },                            // SFI_PASSWORD
+    { CPFS_HIDDEN, CPFIS_NONE },                            // SFI_SUBMIT_BUTTON   
 };
 
 // Field descriptors for unlock and logon.
@@ -62,7 +62,7 @@ static const CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR s_rgCredProvFieldDescriptors[]
 {
     { SFI_TILEIMAGE, CPFT_TILE_IMAGE, L"Image" },
     { SFI_QRCODEIMAGE, CPFT_TILE_IMAGE, L"QR Code" },
-    { SFI_USERNAME, CPFT_LARGE_TEXT, L"Username" },
+    { SFI_USERNAME, CPFT_LARGE_TEXT, L"" },  // Title will be set in Initialize function
     { SFI_PASSWORD, CPFT_PASSWORD_TEXT, L"Password" },
     { SFI_SUBMIT_BUTTON, CPFT_SUBMIT_BUTTON, L"Submit" },
 };

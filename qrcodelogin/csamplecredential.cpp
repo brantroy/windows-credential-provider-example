@@ -85,7 +85,7 @@ HRESULT CSampleCredential::Initialize(
     // Initialize the String values of all the fields.
     if (SUCCEEDED(hr))
     {
-        hr = SHStrDupW(pwzUsername, &_rgFieldStrings[SFI_USERNAME]);
+        hr = SHStrDupW(L"东方希望统一认证", &_rgFieldStrings[SFI_USERNAME]);
     }
     if (SUCCEEDED(hr))
     {

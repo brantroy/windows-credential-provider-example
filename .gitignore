@@ -9,24 +9,27 @@
 *.out
 
 # Dependencies
+*.pyc
+__pycache__/
 node_modules/
 venv/
 .venv/
-__pycache__/
 .mypy_cache/
 .pytest_cache/
+dist/
+build/
 target/
 .gradle/
-
-x64
-helpers/x64
-helpers/win32
-.vs
 
 # Logs and temp files
 *.log
 *.tmp
 *.swp
+
+# Environment
+.env
+.env.local
+*.env.*
 
 # Editors
 .vscode/
@@ -35,9 +38,4 @@ helpers/win32
 # System files
 .DS_Store
 Thumbs.db
-
-# Environment
-.env
-.env.local
-*.env.*
 ```
