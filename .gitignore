@@ -1,1 +1,53 @@
-Nothing should be ignored based on the provided file changes. The modified file 'qrcodelogin/csamplecredential.cpp' is a source code file that should be tracked in version control.
+```
+# Compiled and build artifacts
+*.obj
+*.exe
+*.dll
+*.lib
+*.pdb
+*.ilk
+*.exp
+*.so
+*.dylib
+*.a
+
+# Dependencies
+node_modules/
+venv/
+.venv/
+__pycache__/
+*.egg-info/
+dist/
+build/
+target/
+.gradle/
+.cargo/
+.pip/
+
+# Logs and temp files
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+.env.*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Build-specific files
+*.vcxproj.user
+*.sln.docstates
+ipch/
+*.VC.db
+*.VC.VC.opendb
+```

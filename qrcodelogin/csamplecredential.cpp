@@ -20,6 +20,7 @@
 #include <strsafe.h>
 #include <thread>
 #include <chrono>
+#include <qrencode.h>
 #include "CSampleCredential.h"
 #include "guid.h"
 
@@ -609,14 +610,26 @@ HRESULT CSampleCredential::ReportResult(
     return S_OK;
 }
 
-// Generate QR code bitmap from URL
+// Generate QR code bitmap from URL using libqrencode
 void CSampleCredential::_GenerateQRCodeBitmap(PCWSTR pszURL)
 {
     // Clean up existing bitmap if any
     _CleanupQRCodeBitmap();
 
-    // Create a simple QR code-like pattern for demonstration
-    // In a real implementation, you would integrate with a QR code library
+    // Convert wide string URL to UTF-8 for QR code generation
+    int urlLen = WideCharToMultiByte(CP_UTF8, 0, pszURL, -1, NULL, 0, NULL, NULL);
+    if (urlLen <= 1) return; // Empty string
+    
+    char* pszURLOriginal = new char[urlLen];
+    WideCharToMultiByte(CP_UTF8, 0, pszURL, -1, pszURLOriginal, urlLen, NULL, NULL);
+    
+    // Generate QR code using libqrencode
+    QRcode* qr = QRcode_encodeString(pszURLOriginal, 0, QR_ECLEVEL_L, QR_MODE_8, 1);
+    if (!qr) {
+        delete[] pszURLOriginal;
+        return;
+    }
+
     HDC hdcScreen = GetDC(NULL);
     if (hdcScreen)
     {
@@ -624,11 +637,17 @@ void CSampleCredential::_GenerateQRCodeBitmap(PCWSTR pszURL)
         HDC hdcMem = CreateCompatibleDC(hdcScreen);
         if (hdcMem)
         {
-            // Create a 200x220 pixel bitmap for the QR code (extra 20 pixels for URL text)
+            // Create a bitmap with appropriate size (with extra space for URL text)
+            int qrSize = qr->width;
+            int scale = 4; // Scale factor for better visibility
+            int padding = 20; // Extra space for border
+            int totalSize = qrSize * scale + 2 * padding;
+            int totalHeight = totalSize + 30; // Additional space for URL text
+            
             BITMAPINFO bmi = {0};
             bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-            bmi.bmiHeader.biWidth = 200;
-            bmi.bmiHeader.biHeight = -220; // Top-down DIB
+            bmi.bmiHeader.biWidth = totalSize;
+            bmi.bmiHeader.biHeight = -totalHeight; // Top-down DIB
             bmi.bmiHeader.biPlanes = 1;
             bmi.bmiHeader.biBitCount = 24;
             bmi.bmiHeader.biCompression = BI_RGB;
@@ -640,35 +659,37 @@ void CSampleCredential::_GenerateQRCodeBitmap(PCWSTR pszURL)
                 HGDIOBJ hbmOld = SelectObject(hdcMem, hbm);
                 
                 // Fill with white background
-                RECT rc = {0, 0, 200, 220};
+                RECT rc = {0, 0, totalSize, totalHeight};
                 HBRUSH hbrWhite = CreateSolidBrush(RGB(255, 255, 255));
                 FillRect(hdcMem, &rc, hbrWhite);
                 DeleteObject(hbrWhite);
                 
-                // Draw a simple QR code pattern for demonstration
-                // In a real implementation, you would generate an actual QR code from the URL
-                HPEN hpenBlack = CreatePen(PS_SOLID, 1, RGB(0, 0, 0));
-                HPEN hpenOld = (HPEN)SelectObject(hdcMem, hpenBlack);
-                
-                // Draw a simple pattern to represent a QR code
-                // Draw border squares
-                Rectangle(hdcMem, 10, 10, 50, 50);  // Top-left
-                Rectangle(hdcMem, 150, 10, 190, 50); // Top-right
-                Rectangle(hdcMem, 10, 150, 50, 190); // Bottom-left
-                
-                // Draw some pattern inside to make it look like a QR code
-                for (int i = 0; i < 10; i++) {
-                    for (int j = 0; j < 10; j++) {
-                        if ((i + j) % 2 == 0) { // Simple alternating pattern
-                            RECT rect = {60 + i * 12, 60 + j * 12, 70 + i * 12, 70 + j * 12};
-                            HBRUSH hbrBlack = CreateSolidBrush(RGB(0, 0, 0));
-                            FillRect(hdcMem, &rect, hbrBlack);
-                            DeleteObject(hbrBlack);
+                // Draw QR code
+                unsigned char* pRGB = (unsigned char*)pBits;
+                for (int y = 0; y < qrSize; y++) {
+                    for (int x = 0; x < qrSize; x++) {
+                        unsigned char b = qr->data[y * qrSize + x];
+                        if (b & 0x1) { // QR code module is black
+                            // Calculate position in the bitmap (with padding and scaling)
+                            for (int sy = 0; sy < scale; sy++) {
+                                for (int sx = 0; sx < scale; sx++) {
+                                    int pixelY = padding + y * scale + sy;
+                                    int pixelX = padding + x * scale + sx;
+                                    if (pixelY < totalHeight && pixelX < totalSize) {
+                                        // Calculate position in the 24-bit bitmap data
+                                        int byteOffset = (pixelY * totalSize + pixelX) * 3;
+                                        // Set BGR (not RGB) - note the order
+                                        pRGB[byteOffset] = 0;       // Blue
+                                        pRGB[byteOffset + 1] = 0;   // Green
+                                        pRGB[byteOffset + 2] = 0;   // Red
+                                    }
+                                }
+                            }
                         }
                     }
                 }
                 
-                // Draw URL text below the QR code pattern to show which URL it represents
+                // Draw URL text below the QR code
                 if (pszURL)
                 {
                     SetTextColor(hdcMem, RGB(0, 0, 0));
@@ -678,15 +699,12 @@ void CSampleCredential::_GenerateQRCodeBitmap(PCWSTR pszURL)
                                              DEFAULT_PITCH | FF_SWISS, L"Arial");
                     HFONT hOldFont = (HFONT)SelectObject(hdcMem, hFont);
                     
-                    RECT textRect = {5, 195, 195, 215};
+                    RECT textRect = {5, totalSize, totalSize - 5, totalHeight - 5};
                     DrawText(hdcMem, pszURL, -1, &textRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
                     
                     SelectObject(hdcMem, hOldFont);
                     DeleteObject(hFont);
                 }
-                
-                SelectObject(hdcMem, hpenOld);
-                DeleteObject(hpenBlack);
                 
                 // Store the bitmap
                 _hQRCodeBitmap = (HBITMAP)CopyImage(hbm, IMAGE_BITMAP, 0, 0, LR_COPYRETURNORG);
@@ -697,6 +715,10 @@ void CSampleCredential::_GenerateQRCodeBitmap(PCWSTR pszURL)
         }
         ReleaseDC(NULL, hdcScreen);
     }
+    
+    // Free QR code data
+    QRcode_free(qr);
+    delete[] pszURLOriginal;
 }
 
 // Cleanup QR code bitmap

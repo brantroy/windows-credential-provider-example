@@ -1,0 +1,28 @@
+# Using libqrencode with Windows Credential Provider
+
+## For Windows Development Environment:
+
+1. Install libqrencode for Windows:
+   - Download from: https://fukuchi.org/works/qrencode/
+   - Or use vcpkg: `vcpkg install qrencode`
+
+2. Update the project file (qrcodelogin.vcxproj) to include:
+   - Include directories: Path to qrencode headers
+   - Library dependencies: qrencode.lib
+   - Library directories: Path to qrencode library files
+
+3. The current source code changes:
+   - Added #include <qrencode.h> to csamplecredential.cpp
+   - Modified _GenerateQRCodeBitmap() to use libqrencode for generating actual QR codes
+   - Converts wide string URL to UTF-8 for QR code generation
+   - Scales the QR code for better visibility
+   - Maintains the URL text display below the QR code
+
+## Linux Cross-Compilation Notes:
+This project was modified on Linux with libqrencode installed via apt-get.
+For actual Windows deployment, you'll need the Windows version of libqrencode.
+
+## Key Changes Made:
+- Replaced simple pattern with actual QR code generation using libqrencode
+- Added proper memory management for generated QR codes
+- Maintained the same interface for the credential provider system
