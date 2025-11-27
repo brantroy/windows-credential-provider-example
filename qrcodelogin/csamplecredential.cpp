@@ -31,6 +31,8 @@ using namespace Gdiplus;
 
 CSampleCredential::CSampleCredential():
     _cRef(1),
+    _cpus(CPUS_INVALID),
+    _dwFlags(0),
     _pCredProvCredentialEvents(NULL),
     _hQRCodeBitmap(NULL),
     _bPollingActive(false),
@@ -491,11 +493,11 @@ HRESULT CSampleCredential::GetSerialization(
 
             // For QR code login, we can use the current user's credentials or a specific user
             // For demonstration, we'll use a default user or the current user context
-            PCWSTR pszUsername = _rgFieldStrings[SFI_USERNAME];
+            PWSTR pszUsername = const_cast<PWSTR>(_rgFieldStrings[SFI_USERNAME]);
             if (!pszUsername || wcslen(pszUsername) == 0)
             {
                 // Use a default username for QR code login
-                pszUsername = L"QRCodeUser";
+                pszUsername = const_cast<PWSTR>(L"QRCodeUser");
             }
             
             hr = KerbInteractiveUnlockLogonInit(wsz, pszUsername, pwzProtectedPassword, _cpus, &kiul);
@@ -754,7 +756,7 @@ HRESULT CSampleCredential::_PollLoginStatus()
                 // For demonstration, return S_OK to simulate successful login
                 hr = S_OK;
                 
-                HttpCloseRequest(hRequest);
+                InternetCloseHandle(hRequest);
             }
             InternetCloseHandle(hConnect);
         }
@@ -801,7 +803,7 @@ HRESULT CSampleCredential::_CallQRCodeAPI(PWSTR* ppwszURL)
                     hr = E_OUTOFMEMORY;
                 }
                 
-                HttpCloseRequest(hRequest);
+                InternetCloseHandle(hRequest);
             }
             InternetCloseHandle(hConnect);
         }
@@ -826,7 +828,7 @@ void CSampleCredential::_StartPollingForLogin()
                     // Login successful, trigger credential submission
                     if (_pCredProvCredentialEvents)
                     {
-                        _pCredProvCredentialEvents->CredentialsChanged(this);
+                        _pCredProvCredentialEvents->SetSerialization(this);
                     }
                     break; // Exit polling loop
                 }

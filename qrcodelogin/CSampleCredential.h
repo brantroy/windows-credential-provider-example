@@ -19,6 +19,7 @@
 #include "common.h"
 #include "dll.h"
 #include "resource.h"
+#include <thread>
 
 class CSampleCredential : public ICredentialProviderCredential
 {
