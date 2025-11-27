@@ -72,6 +72,7 @@ HRESULT CSampleCredential::Initialize(
     __in PCWSTR pwzPassword
     )
 {
+    UNREFERENCED_PARAMETER(pwzUsername); // todo
     HRESULT hr = S_OK;
     _cpus = cpus;
     _dwFlags = dwFlags;
